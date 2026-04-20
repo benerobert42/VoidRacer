@@ -1,0 +1,452 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		09CECB7EC18640876527FF79 /* SkiRacingGameApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82E53F245A75EB838C9D1CA5 /* SkiRacingGameApp.swift */; };
+		0BD71C80E17F31B995C39814 /* GameEngine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8E3FD22C30C37D6B27A71C98 /* GameEngine.cpp */; };
+		1A7AFA8EDDC24B41CBDFEF14 /* SceneKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9B4BB1E71A35ABC7DF1C48C1 /* SceneKit.framework */; };
+		2CD3ADF61885B9809F63D645 /* GameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AECD5869ABAB1B9CFCD6AF5D /* GameView.swift */; };
+		3372647BDA95E63D4B683BCC /* PhysicsWorld.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 93A26608D5D7124F65A23EC4 /* PhysicsWorld.cpp */; };
+		5056EA40D49ED6AF2368CA07 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD92E053DDB840718F9A04D6 /* AppState.swift */; };
+		57A0D45E8E9F4AA5B3C82001 /* GameOverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57A0D45E8E9F4AA5B3C82002 /* GameOverView.swift */; };
+		75BACA1F6707C03700C25725 /* Vehicle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0C74BBA9EA29A8060BC8F887 /* Vehicle.cpp */; };
+		96E53A570FE8F6959BB0B722 /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = FBD696A69761272443741611 /* Shaders.metal */; };
+		AB17385ADCDD4DDF86E3053B /* StoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F38FF968B6041E1907FDC93 /* StoreView.swift */; };
+		C3CB1FD586A4BEF527D5D731 /* AssetManager.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4D12F295CC6C981FCD0D832F /* AssetManager.mm */; };
+		C5AC6D75FA63F5CC429119F2 /* GameEngineWrapper.mm in Sources */ = {isa = PBXBuildFile; fileRef = DB09DA9D3915AB36168A6E21 /* GameEngineWrapper.mm */; };
+		D12C6DBCAEB28DC7C383B4A0 /* MainMenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82B2250BF5772BE791938BF4 /* MainMenuView.swift */; };
+		E443E010F7A736DAEA5419A3 /* GameRenderer.mm in Sources */ = {isa = PBXBuildFile; fileRef = FB1084277BFAC4F15350F5FE /* GameRenderer.mm */; };
+		E51D35D07FB5D2BD7AFADC65 /* Track.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A89CCD205270661D1D11C935 /* Track.cpp */; };
+		F10000000000000000000001 /* Challenger in Resources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000001 /* Challenger */; };
+		F10000000000000000000002 /* Dispatcher in Resources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000002 /* Dispatcher */; };
+		F10000000000000000000003 /* Executioner in Resources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000003 /* Executioner */; };
+		F10000000000000000000004 /* Imperial in Resources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000004 /* Imperial */; };
+		F10000000000000000000005 /* Insurgent in Resources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000005 /* Insurgent */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0C74BBA9EA29A8060BC8F887 /* Vehicle.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Vehicle.cpp; sourceTree = "<group>"; };
+		11D9BFF70D270D41341A0E5A /* MathUtils.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = MathUtils.hpp; sourceTree = "<group>"; };
+		2AA9684B9422C31D99E8B6AE /* SkiRacingGame-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SkiRacingGame-Bridging-Header.h"; sourceTree = "<group>"; };
+		3F964820C1E909656BDD1BEC /* PhysicsWorld.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = PhysicsWorld.hpp; sourceTree = "<group>"; };
+		4D12F295CC6C981FCD0D832F /* AssetManager.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = AssetManager.mm; sourceTree = "<group>"; };
+		5598CED01F54945483581042 /* Track.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = Track.hpp; sourceTree = "<group>"; };
+		57A0D45E8E9F4AA5B3C82002 /* GameOverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameOverView.swift; sourceTree = "<group>"; };
+		71CA63802403FA41C1DB9F0F /* GameEngine.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = GameEngine.hpp; sourceTree = "<group>"; };
+		7F38FF968B6041E1907FDC93 /* StoreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreView.swift; sourceTree = "<group>"; };
+		82B2250BF5772BE791938BF4 /* MainMenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainMenuView.swift; sourceTree = "<group>"; };
+		82E53F245A75EB838C9D1CA5 /* SkiRacingGameApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkiRacingGameApp.swift; sourceTree = "<group>"; };
+		8E3FD22C30C37D6B27A71C98 /* GameEngine.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = GameEngine.cpp; sourceTree = "<group>"; };
+		93A26608D5D7124F65A23EC4 /* PhysicsWorld.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsWorld.cpp; sourceTree = "<group>"; };
+		94DBFC4240B939BF4F97132C /* GameEngineWrapper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GameEngineWrapper.h; sourceTree = "<group>"; };
+		95F115F76D9261766C1CB0C5 /* GameRenderer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GameRenderer.h; sourceTree = "<group>"; };
+		98BE9E6F0ACD1298075DF24B /* AssetManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AssetManager.h; sourceTree = "<group>"; };
+		996665C7C168437A653FF785 /* Vehicle.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = Vehicle.hpp; sourceTree = "<group>"; };
+		9B4BB1E71A35ABC7DF1C48C1 /* SceneKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SceneKit.framework; path = System/Library/Frameworks/SceneKit.framework; sourceTree = SDKROOT; };
+		A89CCD205270661D1D11C935 /* Track.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Track.cpp; sourceTree = "<group>"; };
+		AECD5869ABAB1B9CFCD6AF5D /* GameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameView.swift; sourceTree = "<group>"; };
+		B74713643AFB0EAEB0372073 /* SkiRacingGame.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SkiRacingGame.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DB09DA9D3915AB36168A6E21 /* GameEngineWrapper.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = GameEngineWrapper.mm; sourceTree = "<group>"; };
+		DD92E053DDB840718F9A04D6 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		FB1084277BFAC4F15350F5FE /* GameRenderer.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = GameRenderer.mm; sourceTree = "<group>"; };
+		FBD696A69761272443741611 /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Shaders.metal; sourceTree = "<group>"; };
+		F20000000000000000000001 /* Challenger */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Challenger; sourceTree = "<group>"; };
+		F20000000000000000000002 /* Dispatcher */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Dispatcher; sourceTree = "<group>"; };
+		F20000000000000000000003 /* Executioner */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Executioner; sourceTree = "<group>"; };
+		F20000000000000000000004 /* Imperial */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Imperial; sourceTree = "<group>"; };
+		F20000000000000000000005 /* Insurgent */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Insurgent; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		62502E054C31465F6E0C2577 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A7AFA8EDDC24B41CBDFEF14 /* SceneKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		18749BE7E478CA3AE010AFC9 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B74713643AFB0EAEB0372073 /* SkiRacingGame.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1AB747617EC8F7A8BD598704 /* GraphicsEngine */ = {
+			isa = PBXGroup;
+			children = (
+				98BE9E6F0ACD1298075DF24B /* AssetManager.h */,
+				4D12F295CC6C981FCD0D832F /* AssetManager.mm */,
+				94DBFC4240B939BF4F97132C /* GameEngineWrapper.h */,
+				DB09DA9D3915AB36168A6E21 /* GameEngineWrapper.mm */,
+				95F115F76D9261766C1CB0C5 /* GameRenderer.h */,
+				FB1084277BFAC4F15350F5FE /* GameRenderer.mm */,
+				FBD696A69761272443741611 /* Shaders.metal */,
+			);
+			path = GraphicsEngine;
+			sourceTree = "<group>";
+		};
+		3A9375367CA960684D1490A3 /* Assets */ = {
+			isa = PBXGroup;
+			children = (
+				F20000000000000000000001 /* Challenger */,
+				F20000000000000000000002 /* Dispatcher */,
+				F20000000000000000000003 /* Executioner */,
+				F20000000000000000000004 /* Imperial */,
+				F20000000000000000000005 /* Insurgent */,
+			);
+			path = Assets;
+			sourceTree = "<group>";
+		};
+		4839D2E00EC08ADB50E4BEB7 = {
+			isa = PBXGroup;
+			children = (
+				2AA9684B9422C31D99E8B6AE /* SkiRacingGame-Bridging-Header.h */,
+				3A9375367CA960684D1490A3 /* Assets */,
+				7CB17D54F749FF28D5C54FE7 /* Sources */,
+				D55AC1EE444D1F6E5012EDD7 /* Frameworks */,
+				18749BE7E478CA3AE010AFC9 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		73335C0EEC5C03356E0D36A8 /* GameLogic */ = {
+			isa = PBXGroup;
+			children = (
+				8E3FD22C30C37D6B27A71C98 /* GameEngine.cpp */,
+				71CA63802403FA41C1DB9F0F /* GameEngine.hpp */,
+				11D9BFF70D270D41341A0E5A /* MathUtils.hpp */,
+				93A26608D5D7124F65A23EC4 /* PhysicsWorld.cpp */,
+				3F964820C1E909656BDD1BEC /* PhysicsWorld.hpp */,
+				A89CCD205270661D1D11C935 /* Track.cpp */,
+				5598CED01F54945483581042 /* Track.hpp */,
+				0C74BBA9EA29A8060BC8F887 /* Vehicle.cpp */,
+				996665C7C168437A653FF785 /* Vehicle.hpp */,
+			);
+			path = GameLogic;
+			sourceTree = "<group>";
+		};
+		7CB17D54F749FF28D5C54FE7 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				86BF4A2CA0370EC9F093D996 /* App */,
+				73335C0EEC5C03356E0D36A8 /* GameLogic */,
+				1AB747617EC8F7A8BD598704 /* GraphicsEngine */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		86BF4A2CA0370EC9F093D996 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				DD92E053DDB840718F9A04D6 /* AppState.swift */,
+				57A0D45E8E9F4AA5B3C82002 /* GameOverView.swift */,
+				AECD5869ABAB1B9CFCD6AF5D /* GameView.swift */,
+				82B2250BF5772BE791938BF4 /* MainMenuView.swift */,
+				82E53F245A75EB838C9D1CA5 /* SkiRacingGameApp.swift */,
+				7F38FF968B6041E1907FDC93 /* StoreView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		D55AC1EE444D1F6E5012EDD7 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				9B4BB1E71A35ABC7DF1C48C1 /* SceneKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		67BF6484B06B5AD550098CD4 /* SkiRacingGame */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1FB038C71C2D9352F8424B59 /* Build configuration list for PBXNativeTarget "SkiRacingGame" */;
+			buildPhases = (
+				622DE83993885D4448116F07 /* Sources */,
+				8F56A0CFD2D42DF46D44210D /* Resources */,
+				62502E054C31465F6E0C2577 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SkiRacingGame;
+			packageProductDependencies = (
+			);
+			productName = SkiRacingGame;
+			productReference = B74713643AFB0EAEB0372073 /* SkiRacingGame.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		2E66F6975F356665A49691B5 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 8C4846A9300876BA61421F2A /* Build configuration list for PBXProject "SkiRacingGame" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 4839D2E00EC08ADB50E4BEB7;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 18749BE7E478CA3AE010AFC9 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				67BF6484B06B5AD550098CD4 /* SkiRacingGame */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		8F56A0CFD2D42DF46D44210D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F10000000000000000000001 /* Challenger in Resources */,
+				F10000000000000000000002 /* Dispatcher in Resources */,
+				F10000000000000000000003 /* Executioner in Resources */,
+				F10000000000000000000004 /* Imperial in Resources */,
+				F10000000000000000000005 /* Insurgent in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		622DE83993885D4448116F07 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5056EA40D49ED6AF2368CA07 /* AppState.swift in Sources */,
+				C3CB1FD586A4BEF527D5D731 /* AssetManager.mm in Sources */,
+				0BD71C80E17F31B995C39814 /* GameEngine.cpp in Sources */,
+				C5AC6D75FA63F5CC429119F2 /* GameEngineWrapper.mm in Sources */,
+				57A0D45E8E9F4AA5B3C82001 /* GameOverView.swift in Sources */,
+				E443E010F7A736DAEA5419A3 /* GameRenderer.mm in Sources */,
+				2CD3ADF61885B9809F63D645 /* GameView.swift in Sources */,
+				D12C6DBCAEB28DC7C383B4A0 /* MainMenuView.swift in Sources */,
+				3372647BDA95E63D4B683BCC /* PhysicsWorld.cpp in Sources */,
+				96E53A570FE8F6959BB0B722 /* Shaders.metal in Sources */,
+				09CECB7EC18640876527FF79 /* SkiRacingGameApp.swift in Sources */,
+				AB17385ADCDD4DDF86E3053B /* StoreView.swift in Sources */,
+				E51D35D07FB5D2BD7AFADC65 /* Track.cpp in Sources */,
+				75BACA1F6707C03700C25725 /* Vehicle.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0B5CB6FC1D2730A3E1F2FC37 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		8CA00660BC00F5A654D4F05F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		BC13B448098208557DED5DD0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CLANG_CXX_LIBRARY = "libc++";
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "";
+				ENABLE_BITCODE = NO;
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.SkiRacingGame;
+				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "SkiRacingGame-Bridging-Header.h";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		ED55901ACC4C30F37A8B6B7A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
+				CLANG_CXX_LIBRARY = "libc++";
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_IDENTITY = "";
+				ENABLE_BITCODE = NO;
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.SkiRacingGame;
+				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "SkiRacingGame-Bridging-Header.h";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1FB038C71C2D9352F8424B59 /* Build configuration list for PBXNativeTarget "SkiRacingGame" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ED55901ACC4C30F37A8B6B7A /* Debug */,
+				BC13B448098208557DED5DD0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		8C4846A9300876BA61421F2A /* Build configuration list for PBXProject "SkiRacingGame" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0B5CB6FC1D2730A3E1F2FC37 /* Debug */,
+				8CA00660BC00F5A654D4F05F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 2E66F6975F356665A49691B5 /* Project object */;
+}

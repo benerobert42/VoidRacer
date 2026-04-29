@@ -17,11 +17,14 @@ Start here:
 
 Recent implementation areas these docs now cover:
 
-- active collision feedback in normal gameplay, not only debug visualization
-- quick-hit camera shake and short-lived terrain destruction on impact
+- simplified stable terrain baseline with one opaque column type
+- visible-face black wireframe terrain rendering
+- quick-hit camera shake on impact
+- visual-only red column pop feedback on terrain impact
 - a dedicated game-over screen with fast retry and last-run summary
-- a simplified home screen with only `Play` and `Store`
-- a swipeable level-selection flow with live terrain previews
+- a simplified home screen with only `Play` and `Store`, using the established retro sci-fi neon panel style
+- a swipeable level-selection flow with live terrain previews and minimal bottom controls
+- a simplified swipe-based ship-only store
 - a short ship drop-in animation before player control begins
 - first-pass pilot progression through rank XP and run contracts
 - softer terrain-collision damage with slowdown instead of instant death

@@ -36,18 +36,16 @@ public:
     float chaserZ;         // Z position of the advancing wall
     float chaserBaseSpeed; // Matches the run's non-boost baseline speed
     
-    // Boost pads
-    float boostTimer;      // Remaining seconds of speed boost
-    float boostMultiplier; // Speed multiplier when boosted
+    // Reserved power-up state; forced inactive during the solid-terrain baseline.
+    float boostTimer;
+    float boostMultiplier;
     float impactShakeTimer;
     float collisionSlowdownTimer;
     float terrainCollisionCooldownTimer;
     
-    // Elevation pads
-    float elevateTimer;        // Remaining seconds of elevated flight
-    float elevateFlightHeight; // Elevated flight height (above normal 12.0)
+    float elevateTimer;
+    float elevateFlightHeight;
     
-    // Flatten wave
     bool flattenWaveActive;
     float flattenWaveZ;
     float flattenTargetX;

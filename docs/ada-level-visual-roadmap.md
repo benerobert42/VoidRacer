@@ -108,6 +108,7 @@ This is ordered by impact-to-effort and keeps performance in mind.
 2. ~~Add two-band lighting model:~~
 - ~~primary directional light + soft fill light~~
 - ~~slight rim contribution for silhouettes~~
+- ~~stencil-masked ship outline for reliable ship separation~~
 
 3. ~~Introduce distance-based atmospheric perspective:~~
 - ~~color fog by level palette~~
@@ -123,6 +124,8 @@ This is ordered by impact-to-effort and keeps performance in mind.
 1. ~~Reactive glow zones:~~
 - ~~grazing increases nearby terrain pulse intensity~~
 - ~~chaser proximity causes environmental warning shift~~
+- ~~carved playable path receives stronger neon surface glow~~
+- ~~opaque terrain edges receive additive neon treatment on visible faces~~
 
 2. ~~Layered sky/void treatment (first pass):~~
 - ~~far gradient + animated noise layer + subtle parallax bands~~
@@ -158,6 +161,7 @@ To reach award-level cohesion, visuals must reinforce gameplay states:
 - chaser pressure should affect world mood before failure
 - collectible pads should be instantly legible at speed
 - camera and obstacle framing should support the same kind of effortless readability that makes `Race the Sun` feel fair at extreme speed
+- ship readability is a hard requirement: the ship outline should remain visible without relying on glow
 
 ## Specific Technical Tasks In This Codebase
 

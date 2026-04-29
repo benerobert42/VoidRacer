@@ -1,6 +1,32 @@
 import SwiftUI
 import MetalKit
 
+struct GlassPanelModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.black.opacity(0.35))
+                    .background(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                            .environment(\.colorScheme, .dark)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    )
+            )
+    }
+}
+
+extension View {
+    func glassPanel() -> some View {
+        self.modifier(GlassPanelModifier())
+    }
+}
+
 struct GameMetalView: UIViewRepresentable {
     var engineWrapper: GameEngineWrapper
     var previewLevel: GameLevel? = nil
@@ -124,6 +150,18 @@ struct GameView: View {
             score: score
         )
     }
+
+    private var lifeFraction: CGFloat {
+        CGFloat(max(0, min(100, health))) / 100.0
+    }
+
+    private var armorFraction: CGFloat {
+        CGFloat(max(0, min(5, appState.equippedShip.stats.armor))) / 5.0
+    }
+
+    private func combatStatusTopPadding(for topInset: CGFloat) -> CGFloat {
+        max(topInset + 78, 126)
+    }
     
     var body: some View {
         GeometryReader { proxy in
@@ -227,106 +265,122 @@ struct GameView: View {
     
     private func hudLayer(topInset: CGFloat) -> some View {
         VStack {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HUDStat(icon: "star.fill", label: "SCORE", value: "\(score)")
-                        HUDStat(icon: "bitcoinsign.circle.fill", label: "RUN", value: "\(runCoins)")
-                        HUDStat(icon: "heart.fill", label: "HULL", value: "\(health)%")
-                        if isGrazing {
-                            Text("⚡ GRAZE")
-                                .font(.system(size: 10, weight: .black, design: .monospaced))
-                                .foregroundColor(.cyan)
-                                .shadow(color: .cyan, radius: 4)
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    Button(action: {
-                        finishRun(died: false)
-                    }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.white.opacity(0.8))
-                            .frame(width: 40, height: 40)
-                            .background(
-                                Circle()
-                                    .fill(.ultraThinMaterial)
-                                    .environment(\.colorScheme, .dark)
-                            )
-                            .overlay(
-                                Circle()
-                                    .stroke(Color(red: 0.9, green: 0.1, blue: 0.6).opacity(0.6), lineWidth: 1.5)
-                                    .shadow(color: Color(red: 0.9, green: 0.1, blue: 0.6).opacity(0.8), radius: 8)
-                            )
-                    }
-                    .disabled(!hudVisible)
-                }
-                
-                missionPanel
-            }
-            .padding(.top, topInset + 34)
-            .padding(.horizontal, 16)
-            .opacity(hudVisible ? 1 : 0)
+            combatStatusPanel
+                .padding(.top, combatStatusTopPadding(for: topInset))
+                .opacity(hudVisible ? 1 : 0)
             
             Spacer()
             
+            // Near Miss indicator
             if nearMissVisible {
                 Text("NEAR MISS!")
                     .font(.system(size: 28, weight: .black, design: .monospaced))
-                    .foregroundColor(.yellow)
+                    .foregroundColor(Color(red: 0.1, green: 0.9, blue: 0.8)) // teal instead of yellow
                     .tracking(8)
-                    .shadow(color: .yellow, radius: 12)
-                    .shadow(color: .orange, radius: 24)
+                    .shadow(color: .cyan, radius: 12)
+                    .shadow(color: .white, radius: 4)
                     .opacity(nearMissOpacity)
                     .transition(.opacity)
             }
             
             Spacer()
             
+            HStack(alignment: .bottom) {
+                Spacer()
+
+                Button(action: { finishRun(died: false) }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white.opacity(0.82))
+                        .frame(width: 42, height: 42)
+                        .background(
+                            Circle()
+                                .fill(Color.black.opacity(0.26))
+                                .background(Circle().fill(.ultraThinMaterial).environment(\.colorScheme, .dark))
+                        )
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 18)
+            .opacity(hudVisible ? 1 : 0)
+
             Text(controlsEnabled ? "DRAG LEFT / RIGHT TO STEER" : "STABILIZING APPROACH")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundColor(Color(red: 0.1, green: 0.9, blue: 0.8))
-                .shadow(color: Color.cyan.opacity(0.8), radius: 5)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundColor(Color.white.opacity(0.35))
                 .tracking(2)
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .padding(.bottom, 28)
+                .padding(.bottom, 32)
                 .opacity(hudVisible || !controlsEnabled ? 1 : 0)
         }
     }
-    
-    private var missionPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("RUN CONTRACTS")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.64))
-                    .tracking(2.0)
-                Spacer()
-                Text("RANK \(appState.pilotRank)")
-                    .font(.system(size: 10, weight: .black, design: .rounded))
-                    .foregroundColor(.white)
-            }
-            
-            ForEach(appState.activeMissions) { mission in
-                MissionProgressRow(
-                    mission: mission,
-                    progress: appState.progressValue(for: mission, in: currentRunSnapshot)
-                )
+
+    private var combatStatusPanel: some View {
+        VStack(spacing: 5) {
+            statusBar(
+                fraction: lifeFraction,
+                height: 10,
+                fill: Color(red: 1.0, green: 0.04, blue: 0.10),
+                glow: Color.red
+            )
+
+            statusBar(
+                fraction: armorFraction,
+                height: 4,
+                fill: Color(red: 0.12, green: 0.58, blue: 1.0),
+                glow: Color(red: 0.18, green: 0.70, blue: 1.0)
+            )
+
+            Text("\(score)")
+                .font(.system(size: 18, weight: .black, design: .monospaced))
+                .foregroundColor(.white.opacity(0.94))
+                .shadow(color: .black.opacity(0.75), radius: 4)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(width: 220)
+    }
+
+    private func statusBar(fraction: CGFloat, height: CGFloat, fill: Color, glow: Color) -> some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.black.opacity(0.34))
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+
+                Capsule()
+                    .fill(fill)
+                    .frame(width: proxy.size.width * max(0, min(1, fraction)))
+                    .shadow(color: glow.opacity(0.72), radius: 8)
             }
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.black.opacity(0.24))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                )
-        )
-        .frame(maxWidth: 320, alignment: .leading)
+        .frame(height: height)
+    }
+    
+    private var missionPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("CONTRACTS")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundColor(.white.opacity(0.64))
+                .tracking(2.0)
+            
+            HStack(spacing: 8) {
+                ForEach(appState.activeMissions) { mission in
+                    MissionCardView(
+                        mission: mission,
+                        progress: appState.progressValue(for: mission, in: currentRunSnapshot)
+                    )
+                }
+            }
+        }
+        .glassPanel()
     }
     
     private func beginRunPresentation() {
@@ -404,8 +458,8 @@ struct HUDStat: View {
             
             VStack(alignment: .leading, spacing: 0) {
                 Text(label)
-                    .font(.system(size: 8, weight: .bold, design: .rounded))
-                    .foregroundColor(Color(red: 0.9, green: 0.4, blue: 0.6))
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundColor(Color.white.opacity(0.6))
                     .tracking(1.0)
                     .lineLimit(1)
                 Text(value)
@@ -419,7 +473,7 @@ struct HUDStat: View {
     }
 }
 
-struct MissionProgressRow: View {
+struct MissionCardView: View {
     let mission: ProgressionMission
     let progress: Int
     
@@ -427,42 +481,55 @@ struct MissionProgressRow: View {
         Double(min(progress, mission.goal)) / Double(max(1, mission.goal))
     }
     
+    private var iconName: String {
+        switch mission.kind {
+        case .surviveSeconds: return "stopwatch"
+        case .bankCoins: return "bitcoinsign.circle"
+        case .nearMisses: return "exclamationmark.bolt"
+        }
+    }
+    
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
+        VStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.1), lineWidth: 4)
+                Circle()
+                    .trim(from: 0, to: progressFraction)
+                    .stroke(
+                        LinearGradient(colors: [.cyan, Color(red: 0.4, green: 0.8, blue: 1.0)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                Image(systemName: iconName)
+                    .font(.system(size: 16))
+                    .foregroundColor(.white)
+            }
+            .frame(width: 44, height: 44)
+            
+            VStack(spacing: 4) {
                 Text(mission.shortTitle)
                     .font(.system(size: 10, weight: .black, design: .rounded))
                     .foregroundColor(.white)
-                    .tracking(0.8)
+                    .tracking(0.5)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                Spacer(minLength: 4)
-                Text("\(min(progress, mission.goal))/\(mission.goal)")
+                Text("\(min(progress, mission.goal)) / \(mission.goal)")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.72))
+                    .foregroundColor(.white.opacity(0.6))
                     .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
             }
-            
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.10))
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.18, green: 0.95, blue: 1.0),
-                                    Color(red: 1.0, green: 0.46, blue: 0.62)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: geo.size.width * progressFraction)
-                }
-            }
-            .frame(height: 6)
         }
+        .frame(width: 80)
+        .padding(.vertical, 14)
+        .padding(.horizontal, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+        )
     }
 }

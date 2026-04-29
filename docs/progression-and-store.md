@@ -6,9 +6,9 @@ This document captures the current garage, economy, and store design as implemen
 
 The current system mixes two motivational loops:
 
-- short-term wins through skin unlocks
 - longer-term goals through ship unlocks
 - first-pass pilot rank progression through XP and run contracts
+- lightweight ownership identity through the equipped ship
 
 This is a strong foundation for retention because players can make visible progress even when they cannot yet afford the next major unlock.
 
@@ -60,7 +60,7 @@ Current contract tracks:
 New players currently begin with:
 
 - one owned ship: `Executioner`
-- one unlocked default skin: `Executioner_Blue`
+- the default `Executioner_Blue` texture applied internally
 - a starting currency balance in `AppState`
 
 ## Current Unlock Catalog
@@ -77,31 +77,29 @@ Current ship prices:
 
 ### Skins
 
-Each ship currently has the same skin price ladder:
+Skins are paused in the visible store and gameplay loop.
 
-- `Blue`: free/default
-- `Green`: `180`
-- `Orange`: `240`
-- `Purple`: `320`
-- `Red`: `420`
+The asset folders still contain multiple texture files, and the persistence model still has skin storage for future use, but the current game path always resolves each ship to its default blue texture.
 
 ## Current Store Layout
 
 The store is intentionally structured to make choices feel concrete and aspirational.
 
-Current order:
+Current behavior:
 
-1. Large 3D rotating ship preview
-2. Skin choices for the selected ship
-3. Attribute and pricing section
-4. Garage list of all ships
+- opening the store starts on the currently equipped ship
+- horizontal swiping is the primary navigation between ships
+- each page gives most of the screen to the rotating 3D ship model
+- each page shows simple stat lines for life, armor, and speed
+- price and the buy/equip action live directly below the stats
 
 This layout supports a mobile-game style loop:
 
 - show the reward first
-- offer cosmetic variation second
-- justify the purchase with stats and pricing third
-- keep the larger catalog visible below
+- make the next item discoverable through a single swipe
+- keep the decision surface small
+- justify the purchase with readable stats and pricing
+- avoid burying the player in secondary cosmetics while the core loop is still being stabilized
 
 ## Current Ship Stats
 
@@ -110,7 +108,8 @@ Current displayed stats:
 - life
 - armor
 - speed
-- agility
+
+Agility remains defined in code for future gameplay tuning, but the simplified store currently hides it to keep the buying decision more focused.
 
 These values currently support presentation and future balancing direction. They do not yet change runtime gameplay behavior.
 
@@ -120,7 +119,7 @@ These values currently support presentation and future balancing direction. They
 
 - free starter ship
 - forgiving first collectible anchor
-- default blue skin available immediately
+- default blue texture available immediately
 
 ### Challenger
 
@@ -175,8 +174,8 @@ If the goal is stronger retention without making the game feel manipulative, the
 
 Players should almost always have something nearby:
 
-- a skin they can afford soon
 - a ship that feels like the next milestone
+- a contract or rank reward that moves them toward that ship
 
 Dead zones where nothing feels reachable usually hurt momentum.
 
@@ -191,17 +190,17 @@ Good future mapping:
 - speed -> forward acceleration or top-speed modifier
 - agility -> steering response and lateral snap speed
 
-### 3. Use Cosmetics As Recovery Rewards
+### 3. Reintroduce Cosmetics As Recovery Rewards Later
 
-When the player cannot yet buy the next ship, a skin purchase keeps the loop alive.
+When the player cannot yet buy the next ship, a smaller cosmetic purchase can keep the loop alive.
 
-That is one of the healthiest reasons to keep cosmetics cheaper than ships.
+That is one of the healthiest reasons to eventually bring cosmetics back, but only after ship browsing and core gameplay readability are stable.
 
 ### 4. Show Collection Progress Often
 
 Visible progress bars or "owned X/Y ships" helps because completion itself becomes motivating.
 
-The current store already hints at this with garage and unlock counts.
+The current store now hints at catalog position with a simple page indicator instead of a full garage list.
 
 ### 5. Avoid Overcomplicating Currencies Too Early
 
@@ -215,7 +214,7 @@ These fit the current game especially well:
 
 - mission objectives tied to grazing, distance, or survival time
 - unlock tracks for each ship
-- skin sets earned by mastery, not only currency
+- eventual skin sets earned by mastery, not only currency
 - daily or weekly challenges once the run loop is stable
 - milestone bonuses for owning multiple ships
 

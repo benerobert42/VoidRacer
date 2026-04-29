@@ -28,13 +28,13 @@ Vehicle::Vehicle() {
     chaserBaseSpeed = 70.0f; // Matches the run's starting baseline speed
     
     boostTimer = 0.0f;
-    boostMultiplier = 1.5f;
+    boostMultiplier = 1.0f;
     impactShakeTimer = 0.0f;
     collisionSlowdownTimer = 0.0f;
     terrainCollisionCooldownTimer = 0.0f;
     
     elevateTimer = 0.0f;
-    elevateFlightHeight = 22.0f; // 10 units above normal 12.0
+    elevateFlightHeight = 12.0f;
     
     flattenWaveActive = false;
     flattenWaveZ = 0.0f;

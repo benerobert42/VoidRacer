@@ -26,21 +26,22 @@ The current presentation direction mixes:
 2. The home screen background shows the last selected level animating behind the UI as terrain-only motion.
 3. Choosing `Play` opens a swipe-based level-selection screen.
 4. Each level page shows a live terrain preview for that level without the ship.
-5. Choosing `DROP IN` starts a run with the currently equipped ship and skin.
-6. The ship appears above the terrain and falls into the level before control is handed over.
-7. The vehicle automatically moves forward.
-8. The player steers left and right by dragging.
-9. The player survives by avoiding terrain collisions and not letting the chaser overtake them.
-10. The player can pass close to danger to trigger graze state.
-11. Graze state raises score multiplier and improves run-credit gain.
-12. Three live run contracts track survival, credits, and near misses.
-13. The player may hit rare terrain pads that apply temporary effects.
-14. Terrain collisions now damage the ship and slow it down instead of killing instantly.
-15. Impacted columns flash red, pop upward, glow, and collapse away over about `0.5` seconds.
-16. A short camera shake reinforces the impact before the UI changes.
-17. The run ends when health reaches zero or the chaser catches the player.
-18. Credits earned during the run are combined with contract/rank rewards.
-19. Death routes to a dedicated game-over screen with a prominent retry option and last-run summary.
+5. The level-selection UI stays sparse: arrow-only back control, level name, and a single `Play` action.
+6. Choosing `Play` starts a run with the currently equipped ship.
+7. The ship appears above the terrain and falls into the level before control is handed over.
+8. The vehicle automatically moves forward.
+9. The player steers left and right by dragging.
+10. The player survives by avoiding terrain collisions and not letting the chaser overtake them.
+11. The player can pass close to danger to trigger graze state.
+12. Graze state raises score multiplier and improves run-credit gain.
+13. Three live run contracts track survival, credits, and near misses.
+14. Terrain collisions damage the ship and slow it down instead of killing instantly.
+15. A short camera shake reinforces the impact.
+16. The in-run HUD stays sparse: centered life bar, thinner armor bar, and score below them.
+17. Contract and mission detail is reserved for pause/post-run surfaces instead of crowding the notch area during play.
+18. The run ends when health reaches zero or the chaser catches the player.
+19. Credits earned during the run are combined with contract/rank rewards.
+20. Death routes to a dedicated game-over screen with a prominent retry option and last-run summary.
 
 ## Current Skill Drivers
 
@@ -63,15 +64,15 @@ In debug mode, some lethal behavior is softened to support testing.
 
 ## Current Collision Feedback
 
-Normal gameplay now surfaces collisions more like a premium mobile arcade runner instead of keeping that feedback in debug-only space.
+The current baseline keeps collision feedback visual-only while terrain rendering is being stabilized.
 
 Current behavior:
 
-- terrain cells struck by the ship are marked red immediately
-- those cells rise slightly, glow, and collapse away over `0.5` seconds
 - the gameplay camera applies a quick impact shake
-- the run stays in gameplay long enough for that feedback to read before the game-over screen appears
 - the ship now survives repeated terrain hits, but each impact costs health and briefly slows forward speed
+- hit terrain cells turn vivid red, pop upward, and settle back down over roughly `0.5s`
+- terrain cells do not change type, transparency, collision behavior, or lifetime when hit
+- no collision, power-up, or destruction system currently mutates persistent terrain geometry
 
 This direction is intentionally aligned with successful endless-runner UX:
 
@@ -152,9 +153,8 @@ Current behavior:
 
 - advances every frame
 - matches the ship's non-boost baseline forward speed
-- can become more distant when the player hits boost
 - kills the player instantly when it overtakes them, except in debug mode
-- is reinforced visually by a dedicated neon wall and stronger warning glow on nearby terrain
+- is reinforced visually by a dedicated neon wall
 
 This system prevents passive play and keeps every run urgent.
 
@@ -166,17 +166,26 @@ This urgency should increasingly take inspiration from `Race the Sun`:
 
 ### Terrain Pads
 
-The current track generation can place rare special pads:
+Terrain pads are temporarily disabled while the baseline terrain renderer is being solidified.
 
-- `BoostPad`
-- `ElevationPad`
-- `FlattenPad`
+Current baseline:
 
-Current effects:
+- no boost pads
+- no elevation pads
+- no flatten pads
+- no destructible or transparent terrain columns
+- power-up timers are force-reset each frame so no stale effects can survive between terrain revisions
 
-- `BoostPad`: temporary speed boost
-- `ElevationPad`: raises flight height temporarily
-- `FlattenPad`: sends a forward wave that marks a path of cells as destroyed, but only through the terrain window that existed when the effect was triggered
+### Terrain Readability
+
+Current behavior:
+
+- all terrain columns render as one opaque column type with backface culling
+- carved playable path surfaces receive a stronger neon top glow
+- terrain edges receive additive neon wireframe treatment only on visible faces
+- decorative landmark cubes are disabled for the baseline so there are no extra grid-like columns moving with the ship
+- the ship has a stencil-masked 1-pixel black outline to keep it readable without glow
+- ship material shading is opt-in through the vehicle render style, so non-ship scenery cannot inherit ship coloration
 
 ## Current Death Flow
 
@@ -213,18 +222,17 @@ Outside of a run, the current player loop is:
 
 1. bank coins from a run
 2. visit the store
-3. unlock a ship or skin
-4. equip a new look
-5. start another run
+3. unlock or equip a ship
+4. start another run
 
-Right now this is mostly a cosmetic and collection loop, because ship stats shown in the store do not yet change runtime gameplay.
+Right now this is mostly a collection loop, because ship stats shown in the store do not yet change runtime gameplay.
 
 ## Current Design Strengths
 
 - The run starts readable and becomes more intense.
 - Graze adds style-based scoring, not just survival.
 - The store creates a reason to keep banking coins.
-- Ships and skins give the player visible ownership and identity.
+- Ships give the player visible ownership and identity.
 - Failure now has visible payoff and a low-friction retry path instead of an abrupt menu drop.
 
 ## Current Gaps
@@ -240,7 +248,7 @@ These fit the current code direction well:
 
 - tie life/armor/speed/agility to the actual `Vehicle` setup
 - add short-term goals like "graze streak" or "distance survived"
-- add milestone unlocks that sit between skins and whole ships
+- add milestone unlocks that sit between whole ships
 - introduce limited-time or level-specific rewards later if desired
 
 Additional guidance from `Race the Sun`:

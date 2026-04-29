@@ -10,18 +10,18 @@ struct Obstacle {
     bool hasCollided;
 };
 
-// Bit-flags for Grid Cells to maximize cache locality
+// Reserved grid-cell flags. The current baseline terrain renderer keeps all cells opaque.
 enum class CellFlags : uint16_t {
     None          = 0,
-    Destructible  = 1 << 0,  // Glass columns that can be shot
-    Destroyed     = 1 << 1,  // Has been shot (height = 0)
-    BoostPad      = 1 << 2,  // Speed boost pad
-    HasTurret     = 1 << 3,  // Host to a pop-up turret
-    TurretActive  = 1 << 4,  // Turret is firing
-    Equalizer     = 1 << 5,  // (unused; reserved)
-    ElevationPad  = 1 << 6,  // Raises ship flight height for 10s
-    FlattenPad    = 1 << 7,  // Flattens a 2-column path in front of the ship like a wave
-    Collided      = 1 << 8   // Active collision feedback state
+    Destructible  = 1 << 0,
+    Destroyed     = 1 << 1,
+    BoostPad      = 1 << 2,
+    HasTurret     = 1 << 3,
+    TurretActive  = 1 << 4,
+    Equalizer     = 1 << 5,
+    ElevationPad  = 1 << 6,
+    FlattenPad    = 1 << 7,
+    Collided      = 1 << 8
 };
 
 struct GridCell {

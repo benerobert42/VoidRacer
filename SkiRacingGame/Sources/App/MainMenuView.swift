@@ -1,29 +1,23 @@
 import SwiftUI
 
-private func topSafeInset(for proxy: GeometryProxy) -> CGFloat {
-    proxy.safeAreaInsets.top + 30
-}
-
 struct MainMenuView: View {
     @EnvironmentObject var appState: AppState
     @State private var buttonOffset: CGFloat = 36
     @State private var buttonOpacity = 0.0
     
     var body: some View {
-        GeometryReader { proxy in
+        GeometryReader { _ in
             ZStack {
                 // Black safety backdrop prevents any white bleed on edges
                 Color.black.ignoresSafeArea()
                 
                 TerrainPreviewView(level: appState.selectedLevel, scrollSpeed: 34, preferredFramesPerSecond: 30)
-                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .ignoresSafeArea()
+                    .scaleEffect(1.32, anchor: .trailing)
+                    .clipped()
                 backgroundOverlay
                 
                 VStack(spacing: 0) {
-                    topBar
-                        .padding(.horizontal, 20)
-                        .padding(.top, topSafeInset(for: proxy))
-                    
                     Spacer()
                     
                     VStack(spacing: 18) {
@@ -72,44 +66,12 @@ struct MainMenuView: View {
         .ignoresSafeArea()
     }
     
-    private var topBar: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("LAST SELECTED LEVEL")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white.opacity(0.62))
-                    .tracking(2.4)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                
-                Text(appState.selectedLevel.name)
-                    .font(.system(size: 15, weight: .black, design: .rounded))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-            
-            Spacer()
-            
-            HStack(spacing: 10) {
-                PilotRankCapsule(rank: appState.pilotRank, progress: appState.pilotRankProgress)
-                CurrencyCapsule(amount: appState.coins)
-            }
-        }
-    }
-    
     private var titleBlock: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 0) {
             Text("VOID RACER")
                 .font(.system(size: 50, weight: .black, design: .rounded))
                 .foregroundColor(.white)
                 .tracking(2.5)
-            
-            Text("Minimal menu. Fast decisions. Drop straight into the next line.")
-                .font(.system(size: 15, weight: .medium, design: .rounded))
-                .foregroundColor(.white.opacity(0.76))
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 340)
         }
     }
     
@@ -125,7 +87,7 @@ struct MainMenuView: View {
             
             MenuActionButton(
                 title: "STORE",
-                subtitle: "Ships, skins, and garage progression",
+                subtitle: "Ships and garage progression",
                 accent: Color(red: 0.98, green: 0.72, blue: 0.24),
                 symbolName: "bag.fill",
                 action: appState.openStore
@@ -150,42 +112,15 @@ struct LevelSelectView: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 
-                VStack(spacing: 0) {
-                    levelTopBar
-                        .padding(.horizontal, 20)
-                        .padding(.top, topSafeInset(for: proxy))
-                    
-                    Spacer()
-                    
-                    LevelPageIndicator(selection: selection)
-                        .padding(.bottom, 24)
-                }
+                LevelBackButton(action: appState.returnToMenu)
+                    .padding(.leading, 18)
+                    .padding(.top, proxy.safeAreaInsets.top + 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
             .ignoresSafeArea()
         }
         .onAppear {
             selection = appState.selectedLevel.rawValue
-        }
-    }
-    
-    private var levelTopBar: some View {
-        HStack {
-            Button(action: appState.returnToMenu) {
-                Label("MENU", systemImage: "chevron.left")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 11)
-                    .background(GlassCapsuleBackground(tint: Color.white.opacity(0.06)))
-            }
-            .buttonStyle(.plain)
-            
-            Spacer()
-            
-            HStack(spacing: 10) {
-                PilotRankCapsule(rank: appState.pilotRank, progress: appState.pilotRankProgress)
-                CurrencyCapsule(amount: appState.coins)
-            }
         }
     }
 }
@@ -202,61 +137,28 @@ private struct LevelSelectionPage: View {
             VStack(alignment: .leading, spacing: 0) {
                 Spacer()
                 
-                VStack(alignment: .leading, spacing: 18) {
-                    Text("LEVEL SELECT")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.68))
-                        .tracking(2.6)
-                    
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(level.name)
-                            .font(.system(size: 38, weight: .black, design: .rounded))
-                            .foregroundColor(.white)
-                            .tracking(1.4)
-                        
-                        Text(level.subtitle)
-                            .font(.system(size: 16, weight: .medium, design: .rounded))
-                            .foregroundColor(.white.opacity(0.76))
-                    }
-                    
-                    HStack(spacing: 10) {
-                        levelTag(title: "ATMOSPHERE", value: atmosphereLabel)
-                        levelTag(title: "DROP", value: "SHIP ENTRY")
-                    }
-                    
-                    Button(action: {
-                        appState.startGame(level: level)
-                    }) {
-                        HStack {
-                            Text("DROP IN")
-                                .font(.system(size: 16, weight: .black, design: .rounded))
-                                .tracking(1.4)
-                            Spacer()
-                            Image(systemName: "arrow.down.to.line.compact")
-                                .font(.system(size: 16, weight: .bold))
-                        }
+                VStack(spacing: 16) {
+                    Text(level.name)
+                        .font(.system(size: 36, weight: .black, design: .rounded))
                         .foregroundColor(.white)
-                        .padding(.horizontal, 22)
-                        .padding(.vertical, 18)
-                        .background(
-                            GlassRoundedBackground(
-                                cornerRadius: 22,
-                                tint: (level.gradient.last ?? .white).opacity(0.18)
-                            )
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 28)
-                .background(
-                    GlassRoundedBackground(
-                        cornerRadius: 30,
-                        tint: (level.gradient.first ?? .white).opacity(0.10)
+                        .tracking(1.3)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.78)
+                        .shadow(color: Color.black.opacity(0.60), radius: 14, y: 8)
+                    
+                    MenuActionButton(
+                        title: "PLAY",
+                        accent: level.gradient.last ?? .white,
+                        symbolName: "play.fill",
+                        action: {
+                            appState.startGame(level: level)
+                        }
                     )
-                )
-                .padding(.horizontal, 20)
-                .padding(.bottom, 68)
+                }
+                .frame(maxWidth: 420)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 54)
             }
         }
         .ignoresSafeArea()
@@ -286,106 +188,145 @@ private struct LevelSelectionPage: View {
         }
         .ignoresSafeArea()
     }
-    
-    private var atmosphereLabel: String {
-        switch level {
-        case .neonSynthwave:
-            return "SOFT NEON"
-        case .fieryRetrowave:
-            return "HEAT GLOW"
-        case .cyberpunkVoid:
-            return "DIGITAL MIST"
-        case .debugMode:
-            return "TEST GRID"
-        }
-    }
-    
-    private func levelTag(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title)
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundColor(.white.opacity(0.54))
-                .tracking(1.8)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text(value)
-                .font(.system(size: 12, weight: .black, design: .rounded))
+}
+
+private struct LevelBackButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 18, weight: .black))
                 .foregroundColor(.white)
-                .tracking(0.8)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .frame(width: 42, height: 42)
+                .background(
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .fill(Color.black.opacity(0.44))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .stroke(Color.white.opacity(0.28), lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.28), radius: 14, y: 8)
+                )
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(GlassRoundedBackground(cornerRadius: 18, tint: Color.white.opacity(0.05)))
+        .buttonStyle(.plain)
+        .accessibilityLabel("Back to menu")
     }
 }
 
 private struct MenuActionButton: View {
     let title: String
-    let subtitle: String
+    let subtitle: String?
     let accent: Color
     let symbolName: String
     let action: () -> Void
+
+    init(
+        title: String,
+        subtitle: String? = nil,
+        accent: Color,
+        symbolName: String,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.accent = accent
+        self.symbolName = symbolName
+        self.action = action
+    }
     
     var body: some View {
         Button(action: action) {
             HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 7) {
+                VStack(alignment: .leading, spacing: subtitle == nil ? 0 : 7) {
                     Text(title)
                         .font(.system(size: 28, weight: .black, design: .rounded))
                         .foregroundColor(.white)
                         .tracking(1.6)
                     
-                    Text(subtitle)
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundColor(.white.opacity(0.82))
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundColor(.white.opacity(0.82))
+                    }
                 }
                 
                 Spacer()
                 
-                ZStack {
-                    Circle()
-                        .fill(accent.opacity(0.18))
-                        .frame(width: 54, height: 54)
-                    Circle()
-                        .stroke(accent.opacity(0.36), lineWidth: 1)
-                        .frame(width: 54, height: 54)
-                    Image(systemName: symbolName)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.white)
-                }
+                RetroNeonIcon(symbolName: symbolName, accent: accent)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 22)
             .padding(.vertical, 20)
             .background(
-                GlassRoundedBackground(
-                    cornerRadius: 26,
-                    tint: accent.opacity(0.12)
-                )
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .fill(Color.black.opacity(0.38))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        accent.opacity(0.16),
+                                        Color.white.opacity(0.035),
+                                        Color.black.opacity(0.12)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .stroke(accent.opacity(0.55), lineWidth: 1.2)
+                    )
+                    .overlay(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(accent.opacity(0.92))
+                            .frame(width: 4)
+                            .padding(.vertical, 18)
+                            .shadow(color: accent.opacity(0.80), radius: 8)
+                    }
             )
-            .shadow(color: accent.opacity(0.10), radius: 20, y: 10)
+            .shadow(color: accent.opacity(0.22), radius: 22, y: 10)
         }
         .buttonStyle(.plain)
     }
 }
 
-private struct LevelPageIndicator: View {
-    let selection: Int
-    
+private struct RetroNeonIcon: View {
+    let symbolName: String
+    let accent: Color
+
     var body: some View {
-        HStack(spacing: 9) {
-            ForEach(GameLevel.allCases, id: \.rawValue) { level in
-                Capsule()
-                    .fill(level.rawValue == selection ? Color.white : Color.white.opacity(0.28))
-                    .frame(width: level.rawValue == selection ? 26 : 8, height: 8)
-                    .animation(.spring(response: 0.28, dampingFraction: 0.82), value: selection)
+        ZStack {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.black.opacity(0.52))
+                .frame(width: 62, height: 62)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(accent.opacity(0.92), lineWidth: 1.4)
+                )
+                .shadow(color: accent.opacity(0.70), radius: 10)
+
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(accent.opacity(0.34), lineWidth: 1)
+                .frame(width: 42, height: 42)
+                .rotationEffect(.degrees(45))
+
+            VStack(spacing: 5) {
+                ForEach(0..<4, id: \.self) { _ in
+                    Capsule()
+                        .fill(accent.opacity(0.22))
+                        .frame(width: 44, height: 1)
+                }
             }
+
+            Image(systemName: symbolName)
+                .font(.system(size: 21, weight: .heavy))
+                .foregroundColor(.white)
+                .shadow(color: accent.opacity(0.95), radius: 7)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(GlassCapsuleBackground(tint: Color.white.opacity(0.05)))
+        .accessibilityHidden(true)
     }
 }
 
@@ -405,40 +346,6 @@ struct CurrencyCapsule: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .background(GlassCapsuleBackground(tint: Color.white.opacity(0.05)))
-    }
-}
-
-struct PilotRankCapsule: View {
-    let rank: Int
-    let progress: Double
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
-                Image(systemName: "star.circle.fill")
-                    .foregroundColor(Color(red: 0.16, green: 0.96, blue: 1.0))
-                Text("RANK \(rank)")
-                    .font(.system(size: 11, weight: .black, design: .rounded))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-            
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.12))
-                    Capsule()
-                        .fill(Color(red: 0.16, green: 0.96, blue: 1.0).opacity(0.92))
-                        .frame(width: geo.size.width * min(max(progress, 0), 1))
-                }
-            }
-            .frame(height: 5)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(minWidth: 100, idealWidth: 110)
-        .background(GlassRoundedBackground(cornerRadius: 18, tint: Color.white.opacity(0.05)))
     }
 }
 

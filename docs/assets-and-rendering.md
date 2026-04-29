@@ -61,7 +61,7 @@ Current behavior:
 - loads the selected ship from `Bundle.main`
 - expects the object file at `ShipName/OBJ/ShipName.obj`
 - expects textures under `ShipName/Textures/`
-- applies the selected texture to preview materials
+- applies the default blue texture to preview materials while visible skin selection is paused
 - rotates the ship slowly in place
 
 ## Xcode Resource Setup
@@ -87,6 +87,20 @@ Used for:
 - ship during the run
 - shader-driven world visuals
 
+Current gameplay rendering rules:
+
+- terrain geometry is anchored from the CPU `track.grid.originZ` instead of recomputing origin from the vehicle in the shader
+- terrain renders in a single opaque pass with backface culling
+- gameplay rendering explicitly uses counter-clockwise front-face winding so ModelIO/OBJ faces cull correctly
+- transparent, destructible, pad, and destroyed-cell rendering paths are disabled for the current baseline
+- decorative landmark cubes are disabled so only the streamed terrain grid supplies terrain-like columns
+- PBR is temporarily commented out; terrain, ship, and obstacles currently use simple Phong shading
+- terrain uses one flat level-theme base color for all faces; height/elevation gradients and path glow are disabled
+- collision feedback temporarily overrides terrain albedo to vivid red and raises the hit column with a `0.5s` sine pop, without changing persistent terrain state
+- wireframe-like terrain edges are shader-rendered in black only on visible faces
+- ship rendering uses a stencil-masked 1-pixel black outline around the textured body
+- ship texture/rim treatment is selected by explicit render style, not by "any non-terrain mesh", so obstacles stay visually separate from the vehicle
+
 ### SceneKit
 
 Used for:
@@ -105,6 +119,7 @@ This split is currently pragmatic:
 - The preview path and gameplay path are separate, so visual parity can drift if one path changes and the other does not.
 - Store stats and visuals are richer than gameplay differentiation right now.
 - Local builds can fail if the machine is missing the Metal toolchain component, even when asset wiring is correct.
+- Stencil use is now part of the gameplay ship outline path, so pipeline and view depth/stencil formats must stay aligned.
 
 ## Best Practices For Future Assets
 

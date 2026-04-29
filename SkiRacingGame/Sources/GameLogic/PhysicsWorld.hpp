@@ -6,17 +6,6 @@
 #include <simd/simd.h>
 #include <vector>
 
-struct DestroyedCellRecord {
-    int gridX;
-    int gridZ;
-};
-
-struct CollisionCellRecord {
-    int gridX;
-    int gridZ;
-    float timer;
-};
-
 class PhysicsWorld {
 public:
     simd_float3 gravity;
@@ -27,14 +16,17 @@ public:
     bool checkObstacleCollision(Vehicle& vehicle, Obstacle& obstacle, int levelType);
 
 private:
-    std::vector<DestroyedCellRecord> destroyedCells;
+    struct CollisionCellRecord {
+        int gridX;
+        int gridZ;
+        float timer;
+    };
+
     std::vector<CollisionCellRecord> collisionCells;
 
-    void updateEffectState(float deltaTime, int levelType);
+    void updateEffectState(float deltaTime);
     void syncVisibleGridState(Track& track, float renderOriginZ);
-    void markDestroyedCell(float worldX, float worldZ);
     void addOrRefreshCollisionCell(float worldX, float worldZ, float duration);
-    bool isDestroyedAt(float worldX, float worldZ) const;
 };
 
 #endif /* PhysicsWorld_hpp */

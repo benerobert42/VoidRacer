@@ -21,6 +21,10 @@ struct Uniforms {
     int isGrazing;
     float overdriveCharge;
     int renderStyle;
+    float terrainOriginZ;
+    simd_float2 viewportSize;
+    float outlinePixelWidth;
+    float uniformPadding;
 };
 
 // Must match GridCellGPU in Shaders.metal
@@ -58,12 +62,14 @@ struct GridCellGPU {
     double _elapsedTime;
     NSTimeInterval _lastPresentTime;
     
-    // GPU state buffer for grid cell flags
+    // Reserved grid cell state buffer; keeps the terrain shader binding layout stable.
     id<MTLBuffer> _gridStateBuffer;
     
-    // Alpha-blended pipeline for glass/transparent columns
+    // Alpha-blended pipeline for non-terrain effects such as the chaser wall and ship outline.
     id<MTLRenderPipelineState> _blendPipelineState;
     id<MTLDepthStencilState> _transparentDepthState;
+    id<MTLDepthStencilState> _vehicleBodyStencilDepthState;
+    id<MTLDepthStencilState> _vehicleOutlineStencilDepthState;
 }
 
 // ── Matrix helpers ──────────────────────────────────────────────────
@@ -142,7 +148,7 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         self.vehicleVerticalOffset = 0.0f;
         
         mtkView.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
-        mtkView.depthStencilPixelFormat = MTLPixelFormatDepth32Float;
+        mtkView.depthStencilPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
         mtkView.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0); // Pitch black void
         
         [self buildPipelinesWithView:mtkView];
@@ -184,13 +190,14 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     desc.vertexDescriptor = _vertexDescriptor;
     desc.colorAttachments[0].pixelFormat = view.colorPixelFormat;
     desc.depthAttachmentPixelFormat = view.depthStencilPixelFormat;
+    desc.stencilAttachmentPixelFormat = view.depthStencilPixelFormat;
     
     _pipelineState = [_device newRenderPipelineStateWithDescriptor:desc error:&error];
     NSAssert(_pipelineState, @"Failed to create pipeline state: %@", error);
     
-    // ── Blended pipeline for glass/transparent columns ───────────
+    // ── Blended pipeline for non-terrain effects ───────────
     MTLRenderPipelineDescriptor *blendDesc = [[MTLRenderPipelineDescriptor alloc] init];
-    blendDesc.label = @"Glass Blend Pipeline";
+    blendDesc.label = @"Effect Blend Pipeline";
     blendDesc.vertexFunction = vertexFunction;
     blendDesc.fragmentFunction = fragmentFunction;
     blendDesc.vertexDescriptor = _vertexDescriptor;
@@ -203,6 +210,7 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     blendDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
     blendDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
     blendDesc.depthAttachmentPixelFormat = view.depthStencilPixelFormat;
+    blendDesc.stencilAttachmentPixelFormat = view.depthStencilPixelFormat;
     _blendPipelineState = [_device newRenderPipelineStateWithDescriptor:blendDesc error:&error];
     NSAssert(_blendPipelineState, @"Failed to create blend pipeline: %@", error);
     
@@ -215,6 +223,36 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     transparentDepthDesc.depthCompareFunction = MTLCompareFunctionLess;
     transparentDepthDesc.depthWriteEnabled = NO;
     _transparentDepthState = [_device newDepthStencilStateWithDescriptor:transparentDepthDesc];
+
+    MTLStencilDescriptor *vehicleBodyStencil = [[MTLStencilDescriptor alloc] init];
+    vehicleBodyStencil.stencilCompareFunction = MTLCompareFunctionAlways;
+    vehicleBodyStencil.stencilFailureOperation = MTLStencilOperationKeep;
+    vehicleBodyStencil.depthFailureOperation = MTLStencilOperationKeep;
+    vehicleBodyStencil.depthStencilPassOperation = MTLStencilOperationReplace;
+    vehicleBodyStencil.readMask = 0xFF;
+    vehicleBodyStencil.writeMask = 0xFF;
+
+    MTLDepthStencilDescriptor *vehicleBodyDepthDesc = [[MTLDepthStencilDescriptor alloc] init];
+    vehicleBodyDepthDesc.depthCompareFunction = MTLCompareFunctionLess;
+    vehicleBodyDepthDesc.depthWriteEnabled = YES;
+    vehicleBodyDepthDesc.frontFaceStencil = vehicleBodyStencil;
+    vehicleBodyDepthDesc.backFaceStencil = vehicleBodyStencil;
+    _vehicleBodyStencilDepthState = [_device newDepthStencilStateWithDescriptor:vehicleBodyDepthDesc];
+
+    MTLStencilDescriptor *vehicleOutlineStencil = [[MTLStencilDescriptor alloc] init];
+    vehicleOutlineStencil.stencilCompareFunction = MTLCompareFunctionNotEqual;
+    vehicleOutlineStencil.stencilFailureOperation = MTLStencilOperationKeep;
+    vehicleOutlineStencil.depthFailureOperation = MTLStencilOperationKeep;
+    vehicleOutlineStencil.depthStencilPassOperation = MTLStencilOperationKeep;
+    vehicleOutlineStencil.readMask = 0xFF;
+    vehicleOutlineStencil.writeMask = 0x00;
+
+    MTLDepthStencilDescriptor *vehicleOutlineDepthDesc = [[MTLDepthStencilDescriptor alloc] init];
+    vehicleOutlineDepthDesc.depthCompareFunction = MTLCompareFunctionLessEqual;
+    vehicleOutlineDepthDesc.depthWriteEnabled = NO;
+    vehicleOutlineDepthDesc.frontFaceStencil = vehicleOutlineStencil;
+    vehicleOutlineDepthDesc.backFaceStencil = vehicleOutlineStencil;
+    _vehicleOutlineStencilDepthState = [_device newDepthStencilStateWithDescriptor:vehicleOutlineDepthDesc];
     
     MTLSamplerDescriptor *samplerDesc = [MTLSamplerDescriptor new];
     samplerDesc.minFilter = MTLSamplerMinMagFilterLinear;
@@ -263,10 +301,14 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     id<MTLCommandBuffer> cmdBuf = [_commandQueue commandBuffer];
     MTLRenderPassDescriptor *rpd = view.currentRenderPassDescriptor;
     if (!rpd) { [cmdBuf commit]; return; }
+    rpd.stencilAttachment.clearStencil = 0;
+    rpd.stencilAttachment.loadAction = MTLLoadActionClear;
+    rpd.stencilAttachment.storeAction = MTLStoreActionDontCare;
     
     id<MTLRenderCommandEncoder> enc = [cmdBuf renderCommandEncoderWithDescriptor:rpd];
     [enc setRenderPipelineState:_pipelineState];
     [enc setDepthStencilState:_depthState];
+    [enc setFrontFacingWinding:MTLWindingCounterClockwise];
     [enc setCullMode:MTLCullModeBack];
     
     const Vehicle& vehicle = _engine->getVehicle();
@@ -320,6 +362,12 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     float aspect = (float)view.drawableSize.width / (float)view.drawableSize.height;
     matrix_float4x4 projMat = matrix_perspective(55.0f * (M_PI / 180.0f), aspect, 0.1f, 3000.0f);
     matrix_float4x4 viewProj = simd_mul(projMat, viewMat);
+
+    float terrainOriginZ = track.grid.originZ;
+    if (self.previewMode || fabsf(terrainOriginZ) < 0.001f) {
+        float colSpacing = TerrainGrid::COLUMN_SPACING;
+        terrainOriginZ = floorf((renderVehiclePosition.z + colSpacing * 0.5f) / colSpacing) * colSpacing + 150.0f;
+    }
     
     // ── Draw helper ─────────────────────────────────────────────────
     void (^draw)(MTKMesh *, matrix_float4x4, simd_float3, id<MTLTexture>, int, int, int) = ^(MTKMesh *mesh, matrix_float4x4 model, simd_float3 col, id<MTLTexture> tex, int isTerrain, int instanceCount, int renderStyle) {
@@ -332,13 +380,17 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         u.slopeAngle = track.slopeAngle;
         u.levelType = levelType;
         u.vehiclePosition = visibleVehiclePosition;
-        u.cameraPosition = _smoothCamPos;
-        u.time = (float)_elapsedTime;
+        u.cameraPosition = self->_smoothCamPos;
+        u.time = (float)self->_elapsedTime;
         u.chaserZ = vehicle.chaserZ;
         u.vehicleSpeed = simd_length(vehicle.velocity);
         u.isGrazing = vehicle.isGrazing ? 1 : 0;
         u.overdriveCharge = vehicle.overdriveCharge;
         u.renderStyle = renderStyle;
+        u.terrainOriginZ = terrainOriginZ;
+        u.viewportSize = simd_make_float2((float)view.drawableSize.width, (float)view.drawableSize.height);
+        u.outlinePixelWidth = 1.0f;
+        u.uniformPadding = 0.0f;
         
         [enc setVertexBytes:&u length:sizeof(u) atIndex:1];
         [enc setFragmentBytes:&u length:sizeof(u) atIndex:1];
@@ -346,14 +398,14 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         if (tex) {
             [enc setFragmentTexture:tex atIndex:0];
         } else {
-            [enc setFragmentTexture:_dummyTexture atIndex:0];
+            [enc setFragmentTexture:self->_dummyTexture atIndex:0];
         }
-        [enc setFragmentSamplerState:_samplerState atIndex:0];
+        [enc setFragmentSamplerState:self->_samplerState atIndex:0];
         
         for (MTKMeshBuffer *vb in mesh.vertexBuffers) {
             [enc setVertexBuffer:vb.buffer offset:vb.offset atIndex:0];
         }
-        [enc setVertexBuffer:_gridStateBuffer offset:0 atIndex:2];
+        [enc setVertexBuffer:self->_gridStateBuffer offset:0 atIndex:2];
         for (MTKSubmesh *sub in mesh.submeshes) {
             [enc drawIndexedPrimitives:sub.primitiveType
                             indexCount:sub.indexCount
@@ -388,16 +440,9 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     matrix_float4x4 identity = matrix_translation(simd_make_float3(0, 0, 0));
     // Set grid state buffer at index 2 for the vertex shader
     [enc setVertexBuffer:_gridStateBuffer offset:0 atIndex:2];
-    // Pass 1: Opaque columns (renderStyle 0 — fragment shader outputs alpha=1 for non-glass, discards glass)
+    // Single solid terrain pass: every cell is one opaque neon column.
+    [enc setCullMode:MTLCullModeBack];
     draw(_rockMesh, identity, simd_make_float3(1,1,1), nil, 1, TerrainGrid::WIDTH * TerrainGrid::LENGTH, 0);
-    
-    // Pass 2: Transparent fly-through columns (renderStyle 6 — fragment shader outputs alpha<1 for glass, discards non-glass)
-    [enc setRenderPipelineState:_blendPipelineState];
-    [enc setDepthStencilState:_transparentDepthState];
-    draw(_rockMesh, identity, simd_make_float3(1,1,1), nil, 1, TerrainGrid::WIDTH * TerrainGrid::LENGTH, 6);
-    // Restore opaque state
-    [enc setRenderPipelineState:_pipelineState];
-    [enc setDepthStencilState:_depthState];
 
     // ── Chaser wall ───────────────────────────────────────────────
     [enc setRenderPipelineState:_blendPipelineState];
@@ -418,39 +463,7 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     [enc setDepthStencilState:_depthState];
     [enc setCullMode:MTLCullModeBack];
     
-    // ── Landmark silhouettes ──────────────────────────────────────
-    // Sparse distant structures give each biome a stronger silhouette language.
-    for (int i = -1; i < 5; i++) {
-        float landmarkZ = renderVehiclePosition.z - 140.0f - (float)i * 95.0f;
-        
-        if (levelType == 0) {
-            for (int side = -1; side <= 1; side += 2) {
-                simd_float3 pos = simd_make_float3(side * 58.0f, 12.0f, landmarkZ + side * 6.0f);
-                matrix_float4x4 model = matrix_translation(pos);
-                matrix_float4x4 scale = matrix_scale(simd_make_float3(5.0f, 26.0f + (float)(i % 3) * 7.0f, 5.0f));
-                draw(_rockMesh, simd_mul(model, scale), simd_make_float3(0.08f, 0.24f, 0.42f), nil, 0, 1, 0);
-            }
-        } else if (levelType == 1) {
-            for (int side = -1; side <= 1; side += 2) {
-                simd_float3 pos = simd_make_float3(side * 62.0f, 7.0f, landmarkZ + side * 8.0f);
-                matrix_float4x4 model = matrix_translation(pos);
-                matrix_float4x4 scale = matrix_scale(simd_make_float3(14.0f, 16.0f + (float)(i % 2) * 5.0f, 18.0f));
-                draw(_rockMesh, simd_mul(model, scale), simd_make_float3(0.28f, 0.12f, 0.05f), nil, 0, 1, 0);
-            }
-        } else if (levelType == 2) {
-            for (int side = -1; side <= 1; side += 2) {
-                simd_float3 basePos = simd_make_float3(side * 60.0f, 10.0f, landmarkZ);
-                matrix_float4x4 baseModel = matrix_translation(basePos);
-                matrix_float4x4 baseScale = matrix_scale(simd_make_float3(8.0f, 20.0f, 8.0f));
-                draw(_rockMesh, simd_mul(baseModel, baseScale), simd_make_float3(0.06f, 0.22f, 0.18f), nil, 0, 1, 0);
-                
-                simd_float3 topPos = simd_make_float3(basePos.x, basePos.y + 18.0f, basePos.z);
-                matrix_float4x4 topModel = matrix_translation(topPos);
-                matrix_float4x4 topScale = matrix_scale(simd_make_float3(3.0f, 12.0f, 3.0f));
-                draw(_rockMesh, simd_mul(topModel, topScale), simd_make_float3(0.10f, 0.34f, 0.28f), nil, 0, 1, 0);
-            }
-        }
-    }
+    // Decorative landmark cubes are disabled for the baseline pass so only streamed grid terrain is visible.
     
     // ── Obstacles (rocks) ───────────────────────────────────────────
     if (self.showsObstacles) {
@@ -482,10 +495,6 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         matrix_float4x4 vehRotY = matrix_rotation_y(yaw);
         matrix_float4x4 vehTrans = matrix_translation(visibleVehiclePosition + simd_make_float3(0, 0.5f, 0));
         matrix_float4x4 vehModel = simd_mul(vehTrans, simd_mul(vehRotY, vehScale));
-        // Glow shell: thicker outline for vivid neon silhouette
-        matrix_float4x4 vehGlowScale = matrix_scale(simd_make_float3(0.8f * 1.04f, 0.8f * 1.04f, 0.8f * 1.04f));
-        matrix_float4x4 vehGlowModel = simd_mul(vehTrans, simd_mul(vehRotY, vehGlowScale));
-        
         // Level-tinted base color instead of flat white — ensures ship isn't washed out
         simd_float3 vehCol;
         if (vehicle.isDestroyed) {
@@ -499,16 +508,24 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         } else {
             vehCol = simd_make_float3(0.72f, 0.72f, 0.78f); // neutral steel
         }
-        // Draw the neon glow silhouette shell first (inverted hull)
-        [enc setRenderPipelineState:_blendPipelineState];
-        [enc setDepthStencilState:_transparentDepthState];
+        // Draw the opaque textured/tinted ship body and mark its pixels in stencil.
+        [enc setRenderPipelineState:_pipelineState];
+        [enc setDepthStencilState:_vehicleBodyStencilDepthState];
+        [enc setStencilReferenceValue:1];
+        [enc setCullMode:MTLCullModeBack];
+        draw(_vehicleMesh, vehModel, vehCol, _vehicleTexture, 0, 1, 1);
+
+        // Draw a 1-pixel black stencil outline after the body, only outside body pixels.
+        [enc setRenderPipelineState:_pipelineState];
+        [enc setDepthStencilState:_vehicleOutlineStencilDepthState];
+        [enc setStencilReferenceValue:1];
         [enc setCullMode:MTLCullModeFront];
-        draw(_vehicleMesh, vehGlowModel, simd_make_float3(1.0f, 1.0f, 1.0f), nil, 0, 1, 4);
-        // Then draw the opaque textured/tinted ship body
+        draw(_vehicleMesh, vehModel, simd_make_float3(0.0f, 0.0f, 0.0f), nil, 0, 1, 4);
+
+        [enc setStencilReferenceValue:0];
         [enc setRenderPipelineState:_pipelineState];
         [enc setDepthStencilState:_depthState];
         [enc setCullMode:MTLCullModeBack];
-        draw(_vehicleMesh, vehModel, vehCol, _vehicleTexture, 0, 1, 0);
     }
     
     [enc endEncoding];

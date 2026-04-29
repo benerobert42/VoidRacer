@@ -8,7 +8,7 @@ This document describes the current structure of the game as implemented in the 
 - `GameEngineWrapper` bridges Swift and Objective-C++ into the C++ game simulation.
 - `C++` owns the core simulation state for the vehicle, track, and physics update loop.
 - `Metal` renders gameplay.
-- `SceneKit` is currently used in the store to preview ship models with their selected textures.
+- `SceneKit` is currently used in the store to preview ship models with their default textures.
 
 ## App Flow
 
@@ -37,8 +37,8 @@ Current screens:
 - pilot rank and pilot XP
 - active contract tiers
 - owned ships
-- unlocked skins
-- equipped ship and equipped skin
+- inactive skin persistence kept for future use
+- equipped ship
 - persistence through `UserDefaults`
 - sending the currently equipped mesh and texture names to the renderer bridge
 - flagging when a gameplay entry animation should play
@@ -49,11 +49,20 @@ Current responsibilities:
 
 - present a simplified landing screen with only the primary actions
 - show the last selected level as a live animated terrain background
-- present controls as a glass-like floating layer instead of solid gradient blocks
+- present controls as retro sci-fi neon panels instead of generic gradient or plain glass blocks
 - let the player enter the store
 - let the player move into the dedicated level-selection flow
 
 This screen is now intentionally closer to `Race the Sun` minimalism than to a feature-dense mobile dashboard.
+
+Current main-menu design contract:
+
+- the live terrain preview must cover the full screen edge-to-edge with no black side gaps
+- the top area must not contain selected mode, rank, currency, missions, or other dashboard data
+- the `VOID RACER` title stands alone without a subtitle
+- the only primary actions are `Play` and `Store`
+- action cards use a dark translucent panel, vivid neon accent rail, thin neon border, glow, scanline icon treatment, and old-school retro-sci-fi proportions
+- future menu work should preserve this direction unless the full art direction is intentionally changed
 
 ### `LevelSelectView`
 
@@ -61,20 +70,23 @@ Current responsibilities:
 
 - present one level at a time in a horizontal page-style carousel
 - render the selected level as a live terrain-only preview
-- use the same glass-like control layer for lightweight browsing controls
+- keep only an arrow-only back control near the upper-left safe area
+- avoid rank, currency, mode, mission, and other dashboard UI on this screen
+- keep the bottom selection UI to the level name plus one `Play` action
+- use the same retro sci-fi neon action-card language established by the main menu
 - keep the browsing flow lightweight and tactile
-- let the player commit to a level with a single `DROP IN` action
+- let the player commit to a level with a single `Play` action
 
 ### `StoreView`
 
 Current responsibilities:
 
-- show a large rotating 3D preview of the selected ship
-- let the player browse skins for that ship
-- show ship attributes and price
+- start on the currently equipped ship
+- let the player browse ships by horizontal swiping
+- show a large rotating 3D preview for each ship page
+- show simplified ship attributes and price
 - let the player buy or equip ships
-- let the player buy or equip skins
-- show garage progression framing
+- keep skins hidden while the core ship store is simplified
 
 ### `GameView`
 
@@ -83,10 +95,9 @@ Current responsibilities:
 - host the Metal gameplay view
 - play a short ship drop-in animation before controls unlock
 - forward steering drag input to the engine
-- display the HUD
-- show live contract progress during the run
+- display the minimal in-run HUD
 - trigger near-miss messaging
-- delay death handoff long enough for collision feedback to play
+- delay death handoff briefly before game-over routing
 - bank run coins into the persistent store economy when a run ends
 
 ### `GameOverView`
@@ -120,9 +131,13 @@ Current renderer behavior:
 - supports a preview-only mode that scrolls terrain without gameplay input
 - can hide the ship, obstacles, and chaser for menu backgrounds
 - can offset the ship vertically to support entry animation
-- renders transient collision feedback for impacted terrain cells
 - applies a short camera shake when collisions happen
 - renders a dedicated neon chaser wall instead of relying only on terrain tint
+- anchors terrain instances from `track.grid.originZ`
+- renders terrain in one opaque pass only
+- renders visible-face neon wireframe edges inside the terrain shader
+- renders the ship with a stencil-masked 1-pixel black outline so the body stays readable without glow
+- uses an explicit ship render style for the vehicle body so scenery and obstacle meshes cannot accidentally receive ship material shading
 
 ### Store Preview Rendering
 
@@ -131,7 +146,7 @@ The store uses a separate preview path in SwiftUI via `SceneKit`.
 Current preview behavior:
 
 - loads `OBJ` assets from the bundled ship folder
-- loads the selected texture from that ship's `Textures` folder
+- loads the default blue texture from that ship's `Textures` folder while skins are paused
 - applies the texture to the preview geometry
 - rotates the ship slowly in place
 
@@ -185,41 +200,38 @@ Owns the player run state:
 - a terrain-impact slowdown timer and damage cooldown
 - graze and overdrive values
 - chaser state
-- boost, elevation, and flatten-wave timers
 
 ### `Track`
 
-Owns the current terrain grid and procedural cell flags.
+Owns the current terrain grid.
 
 The current implementation uses:
 
 - a `60 x 80` terrain grid with gameplay constrained to the inner corridor
 - height-derived terrain data
-- rare boost pads
-- rare elevation pads
-- rare flatten pads
-- flags for destructible, collision-feedback, and destroyed states
-- a short collision effect timer on each impacted cell
+- one active opaque terrain-column type
+- transient collision-effect timers for hit feedback
+- no active destructible, transparent, pad, or terrain-mutation states in the baseline renderer
+- no decorative terrain-like landmark columns during the stabilization baseline
 
 ### `PhysicsWorld`
 
 Handles the per-frame update loop:
 
 - ramps base forward speed over time
-- applies boost multipliers
 - clamps and moves lateral steering
 - advances the chaser wall
 - keeps the chaser matched to the run's baseline speed so a clean line does not lose ground passively
-- applies elevation state
-- propagates the flatten-wave effect
+- force-disables reserved power-up timers while the solid-terrain baseline is active
 - checks hull collisions
 - checks graze state
 - updates score multiplier
 - updates score
 - accumulates run credits over time and from stylish play
 - converts terrain impacts into health loss and slowdown instead of immediate death
-- decays impact feedback timers after death so visuals can finish cleanly
-- rebuilds the visible terrain grid from world-space destruction and collision records so streamed terrain does not inherit stale slot-based effects
+- records hit cells as short-lived world-grid collision effects
+- rebuilds the visible terrain grid from deterministic height data plus transient collision-effect timers
+- does not currently mutate terrain cells for pads, destruction, or persistent collision state
 
 ## Assets
 
@@ -252,9 +264,9 @@ Stored values:
 - pilot XP
 - contract tiers
 - owned ships
-- unlocked skins
+- inactive skin ownership data
 - equipped ship
-- equipped skins per ship
+- inactive equipped-skin data kept for future use
 
 ## Current Architectural Notes
 

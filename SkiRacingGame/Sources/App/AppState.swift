@@ -138,7 +138,7 @@ enum ShipID: String, CaseIterable, Identifiable {
         case .dispatcher:
             return "Tank-class unlock for players who enjoy visible collection growth and heavier silhouettes."
         case .imperial:
-            return "Prestige cruiser priced like a mid-game flex piece with premium-looking skins."
+            return "Prestige cruiser priced like a mid-game flex piece with a premium silhouette."
         case .insurgent:
             return "Endgame chase ship tuned to feel like the garage completion milestone."
         }
@@ -464,7 +464,8 @@ class AppState: ObservableObject {
     }
     
     func textureName(for ship: ShipID) -> String {
-        "\(ship.rawValue)_\(equippedSkin(for: ship).rawValue)"
+        // Skins are currently paused in the visible game loop; keep every ship on its default texture.
+        "\(ship.rawValue)_\(ShipSkin.blue.rawValue)"
     }
     
     private func applyCurrentLoadoutToEngine() {

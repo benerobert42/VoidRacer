@@ -85,7 +85,7 @@ Current levels are defined in `AppState.swift`.
 
 ## Skins
 
-Each ship currently supports these skins:
+Skin texture assets currently exist for each ship:
 
 - Blue
 - Green
@@ -93,26 +93,22 @@ Each ship currently supports these skins:
 - Purple
 - Red
 
-Current global skin prices:
+Visible skin buying/equipping is currently paused.
 
-- Blue: free
-- Green: 180
-- Orange: 240
-- Purple: 320
-- Red: 420
+The active game and store preview path uses the default blue texture for each ship while the ship-only store is being stabilized.
 
 ## Track Content
 
 The procedural terrain grid can currently include:
 
 - standard terrain columns
+
+Reserved but currently not meaningfully active in the visible game loop:
+
 - destructible cells
 - boost pads
 - elevation pads
 - flatten pads
-
-Reserved but currently not meaningfully active in the visible game loop:
-
 - turrets
 - equalizer cells
 
@@ -121,17 +117,18 @@ Reserved but currently not meaningfully active in the visible game loop:
 Current in-run HUD includes:
 
 - score
-- run coin total
-- hull percent
-- grazing indicator
+- centered life bar
+- centered armor bar
 - near-miss text feedback
+
+Mission/contract detail is intentionally kept out of the active top HUD and should appear on pause or post-run surfaces.
 
 ## Current Content Rules
 
 - ship ownership persists across launches
-- skin ownership persists across launches
-- each owned ship automatically has its blue skin available
-- the equipped ship determines the gameplay mesh and texture used during the run
+- inactive skin ownership data may persist from earlier builds
+- each ship currently resolves to its default blue texture
+- the equipped ship determines the gameplay mesh used during the run
 
 ## Open Content Questions
 
@@ -139,5 +136,5 @@ These are not yet settled in code:
 
 - whether ship stats should affect actual gameplay
 - whether different levels should reward different currencies or progression tracks
-- whether some skins should become achievement unlocks instead of store purchases
+- whether skins should return as mastery or achievement unlocks
 - whether each ship should get unique abilities beyond stat tuning

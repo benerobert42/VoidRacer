@@ -136,7 +136,7 @@ public:
         return fmaxf(minValue, fminf(maxValue, x));
     }
 
-    // Winding riverbed logic using low-frequency sine/noise offset
+    // Winding riverbed logic using a single stable centerline.
     static float getDistFromRiver(float gridX, float gridZ) {
         constexpr float kRiverPlayableHalfWidth = 100.0f;
         constexpr float kRiverTransitionWidth = 40.0f;
@@ -144,22 +144,9 @@ public:
         constexpr float kRiverCurveScale = 0.92f;
         constexpr float kRiverPrimaryFrequency = 0.0074f;
         constexpr float kRiverSecondaryFrequency = 0.021f;
-        constexpr float kRiverBranchFrequency = 0.0046f;
-        float dampening = math_smoothstep(0.0f, 500.0f, fabsf(gridZ));
         float riverBaseX = (sinf(gridZ * kRiverPrimaryFrequency) * (31.0f * kRiverCurveScale) +
-                            sinf(gridZ * kRiverSecondaryFrequency + 0.9f) * (16.0f * kRiverCurveScale)) * dampening;
-        
-        // Split driver: positive when river branches
-        float splitFactor = (sinf(gridZ * kRiverBranchFrequency + 10.0f) * 0.72f) +
-                            (sinf(gridZ * 0.0095f + 1.7f) * 0.28f);
-        // Keep branch centers inside the inner 40-column playable corridor.
-        float branchOffset = math_smoothstep(0.04f, 0.52f, splitFactor) * (21.0f * kRiverCurveScale);
-        
-        if (branchOffset > 2.0f) {
-            float riverX1 = clamp(riverBaseX + branchOffset, -kRiverCenterLimit, kRiverCenterLimit);
-            float riverX2 = clamp(riverBaseX - branchOffset, -kRiverCenterLimit, kRiverCenterLimit);
-            return fminf(fabsf(gridX - riverX1), fabsf(gridX - riverX2));
-        }
+                            sinf(gridZ * kRiverSecondaryFrequency + 0.9f) * (16.0f * kRiverCurveScale));
+
         return fabsf(gridX - clamp(riverBaseX, -kRiverCenterLimit, kRiverCenterLimit));
     }
 
@@ -178,7 +165,7 @@ public:
         // River path has noticeable but short noise (max 1/3 the 15 unit depth -> 5 units amplitude)
         float h_river = fbm_simple(tcx, tcy, 2) * 2.5f - 17.5f; // approx -17.5 to -12.5 height
 
-        // Blend them based on distance from the nearest river branch center
+        // Blend them based on distance from the river centerline
         float distFromCenter = getDistFromRiver(gridX, gridZ);
         float pathMix = math_smoothstep(15.0f, 40.0f, distFromCenter);
 

@@ -43,7 +43,6 @@ struct GridCellGPU {
     id<MTLTexture> _dummyTexture;
     
     MTKMesh *_vehicleMesh;
-    id<MTLTexture> _vehicleTexture;
     
     MTKMesh *_rockMesh;
     MTKMesh *_terrainMesh;
@@ -273,12 +272,9 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
 - (void)buildMeshes {
     _assetManager = [[AssetManager alloc] initWithDevice:_device vertexDescriptor:_vertexDescriptor];
     NSString *meshName = [_wrapper vehicleMeshName];
-    NSString *textureName = [_wrapper vehicleTextureName];
     
     _vehicleMesh = [_assetManager loadMeshNamed:meshName extension:@"obj"];
     if (!_vehicleMesh) _vehicleMesh = [_assetManager generateFallbackCapsule];
-    
-    _vehicleTexture = [_assetManager loadTextureNamed:textureName extension:@"png"];
     
     _rockMesh     = [_assetManager generateRockMesh];
     _terrainMesh  = [_assetManager generateFallbackPlane];
@@ -486,34 +482,27 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     
     // ── Vehicle ─────────────────────────────────────────────────────
     if (self.showsVehicle) {
+        // Render-only steering attitude: make the hull face into turns without changing physics.
         float yaw = M_PI;
-        if (simd_length(vehicle.velocity) > 0.1f) {
-            yaw = atan2f(vehicle.velocity.x, vehicle.velocity.z);
+        float visualLateralSpeed = vehicle.velocity.x * 1.35f;
+        float horizontalSpeedSq = visualLateralSpeed * visualLateralSpeed + vehicle.velocity.z * vehicle.velocity.z;
+        if (horizontalSpeedSq > 0.01f) {
+            yaw = atan2f(visualLateralSpeed, vehicle.velocity.z);
         }
         
         matrix_float4x4 vehScale = matrix_scale(simd_make_float3(0.8f, 0.8f, 0.8f));
         matrix_float4x4 vehRotY = matrix_rotation_y(yaw);
         matrix_float4x4 vehTrans = matrix_translation(visibleVehiclePosition + simd_make_float3(0, 0.5f, 0));
         matrix_float4x4 vehModel = simd_mul(vehTrans, simd_mul(vehRotY, vehScale));
-        // Level-tinted base color instead of flat white — ensures ship isn't washed out
-        simd_float3 vehCol;
-        if (vehicle.isDestroyed) {
-            vehCol = simd_make_float3(0.3f, 0.3f, 0.3f);
-        } else if (levelType == 0) {
-            vehCol = simd_make_float3(0.52f, 0.78f, 0.92f); // cool cyan-steel
-        } else if (levelType == 1) {
-            vehCol = simd_make_float3(0.92f, 0.68f, 0.48f); // warm amber-steel
-        } else if (levelType == 2) {
-            vehCol = simd_make_float3(0.52f, 0.88f, 0.68f); // mint-steel
-        } else {
-            vehCol = simd_make_float3(0.72f, 0.72f, 0.78f); // neutral steel
-        }
-        // Draw the opaque textured/tinted ship body and mark its pixels in stencil.
+        // Draw a monochrome silver ship body and mark its pixels in stencil.
+        simd_float3 vehCol = vehicle.isDestroyed
+            ? simd_make_float3(0.30f, 0.30f, 0.32f)
+            : simd_make_float3(0.78f, 0.80f, 0.83f);
         [enc setRenderPipelineState:_pipelineState];
         [enc setDepthStencilState:_vehicleBodyStencilDepthState];
         [enc setStencilReferenceValue:1];
         [enc setCullMode:MTLCullModeBack];
-        draw(_vehicleMesh, vehModel, vehCol, _vehicleTexture, 0, 1, 1);
+        draw(_vehicleMesh, vehModel, vehCol, nil, 0, 1, 1);
 
         // Draw a 1-pixel black stencil outline after the body, only outside body pixels.
         [enc setRenderPipelineState:_pipelineState];

@@ -30,33 +30,11 @@ struct StoreView: View {
     }
 
     private func storeChrome(for geo: GeometryProxy) -> some View {
-        VStack {
-            HStack {
-                Button(action: appState.returnToMenu) {
-                    Label("MENU", systemImage: "chevron.left")
-                        .font(.system(size: 12, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 11)
-                        .background(
-                            Capsule()
-                                .fill(Color.white.opacity(0.08))
-                                .overlay(
-                                    Capsule()
-                                        .stroke(Color.white.opacity(0.14), lineWidth: 1)
-                                )
-                        )
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-                CurrencyCapsule(amount: appState.coins)
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, geo.safeAreaInsets.top + 24)
-
-            Spacer()
-        }
+        StoreBackButton(action: appState.returnToMenu)
+            .padding(.leading, 18)
+            .padding(.top, StoreSafeArea.topInset(for: geo) + 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .zIndex(10)
     }
 
     private var storeBackground: some View {
@@ -93,14 +71,11 @@ private struct ShipStorePage: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Spacer(minLength: geometry.safeAreaInsets.top + 56)
+            Spacer(minLength: StoreSafeArea.topInset(for: geometry) + 48)
 
             titleBlock
 
-            ShipPreviewView(
-                shipName: ship.rawValue,
-                textureName: "\(ship.rawValue)_\(ShipSkin.blue.rawValue)"
-            )
+            ShipPreviewView(shipName: ship.rawValue)
             .frame(maxWidth: .infinity)
             .frame(height: previewHeight)
             .contentShape(Rectangle())
@@ -121,13 +96,15 @@ private struct ShipStorePage: View {
 
             StorePageIndicator(currentShip: ship)
 
-            Spacer(minLength: geometry.safeAreaInsets.bottom + 14)
+            Spacer(minLength: StoreSafeArea.bottomInset(for: geometry) + 14)
         }
         .padding(.horizontal, 22)
     }
 
     private var previewHeight: CGFloat {
-        let safeHeight = geometry.size.height - geometry.safeAreaInsets.top - geometry.safeAreaInsets.bottom
+        let safeHeight = geometry.size.height
+            - StoreSafeArea.topInset(for: geometry)
+            - StoreSafeArea.bottomInset(for: geometry)
         return min(max(safeHeight * 0.48, 300), 500)
     }
 
@@ -227,7 +204,10 @@ private struct ShipStorePage: View {
         if isEquipped || (!isOwned && !appState.canAfford(ship: ship)) {
             return [Color.white.opacity(0.10), Color.white.opacity(0.07)]
         }
-        return ship.accentGradient
+        return [
+            Color(red: 0.12, green: 0.88, blue: 1.0),
+            Color(red: 0.02, green: 0.42, blue: 0.92)
+        ]
     }
 
     private func performPrimaryAction() {
@@ -290,9 +270,51 @@ private struct StorePageIndicator: View {
     }
 }
 
+private enum StoreSafeArea {
+    static func topInset(for geometry: GeometryProxy) -> CGFloat {
+        max(geometry.safeAreaInsets.top, windowInsets.top, 52)
+    }
+
+    static func bottomInset(for geometry: GeometryProxy) -> CGFloat {
+        max(geometry.safeAreaInsets.bottom, windowInsets.bottom)
+    }
+
+    private static var windowInsets: UIEdgeInsets {
+        let windowScene = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+        let window = windowScene?.windows.first { $0.isKeyWindow }
+        return window?.safeAreaInsets ?? .zero
+    }
+}
+
+private struct StoreBackButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 18, weight: .black))
+                .foregroundColor(.white)
+                .frame(width: 46, height: 46)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color.black.opacity(0.50))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(Color.white.opacity(0.28), lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.36), radius: 14, y: 8)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Back to menu")
+    }
+}
+
 struct ShipPreviewView: UIViewRepresentable {
     let shipName: String
-    let textureName: String
 
     func makeUIView(context: Context) -> SCNView {
         let view = SCNView()
@@ -380,10 +402,9 @@ struct ShipPreviewView: UIViewRepresentable {
         }
 
         let container = SCNNode()
-        let textureImage = loadTextureImage()
         for child in scene.rootNode.childNodes {
             let clone = child.clone()
-            applyTexture(textureImage, to: clone)
+            applySilverMaterial(to: clone)
             container.addChildNode(clone)
         }
 
@@ -403,46 +424,26 @@ struct ShipPreviewView: UIViewRepresentable {
         return container
     }
 
-    private func loadTextureImage() -> UIImage? {
-        guard let textureURL = Bundle.main.url(forResource: textureName, withExtension: "png", subdirectory: "\(shipName)/Textures") else {
-            return nil
-        }
-        return UIImage(contentsOfFile: textureURL.path)
-    }
-
-    private func applyTexture(_ textureImage: UIImage?, to node: SCNNode) {
+    private func applySilverMaterial(to node: SCNNode) {
         if let geometry = node.geometry {
-            configureMaterials(of: geometry, textureImage: textureImage)
+            configureMaterials(of: geometry)
         }
 
         node.enumerateChildNodes { child, _ in
             guard let geometry = child.geometry else { return }
-            configureMaterials(of: geometry, textureImage: textureImage)
+            configureMaterials(of: geometry)
         }
     }
 
-    private func configureMaterials(of geometry: SCNGeometry, textureImage: UIImage?) {
-        let textureTransform = SCNMatrix4Translate(SCNMatrix4MakeScale(1, -1, 1), 0, -1, 0)
-
+    private func configureMaterials(of geometry: SCNGeometry) {
         for material in geometry.materials {
-            if let textureImage {
-                material.diffuse.contents = textureImage
-                material.diffuse.contentsTransform = textureTransform
-                material.diffuse.wrapS = .repeat
-                material.diffuse.wrapT = .repeat
-                material.diffuse.magnificationFilter = .linear
-                material.diffuse.minificationFilter = .linear
-                material.diffuse.mipFilter = .linear
-            } else {
-                material.diffuse.contents = UIColor(white: 0.82, alpha: 1.0)
-            }
-
-            material.lightingModel = .blinn
-            material.ambient.contents = UIColor(white: 0.10, alpha: 1.0)
+            material.lightingModel = .phong
+            material.diffuse.contents = UIColor(red: 0.78, green: 0.80, blue: 0.83, alpha: 1.0)
+            material.ambient.contents = UIColor(white: 0.08, alpha: 1.0)
             material.emission.contents = UIColor.black
-            material.specular.contents = UIColor(white: 0.22, alpha: 1.0)
-            material.shininess = 0.28
-            material.fresnelExponent = 0.55
+            material.specular.contents = UIColor(white: 0.95, alpha: 1.0)
+            material.shininess = 0.86
+            material.fresnelExponent = 0.40
             material.multiply.contents = UIColor.white
             material.isDoubleSided = true
         }

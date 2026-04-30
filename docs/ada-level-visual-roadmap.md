@@ -115,8 +115,8 @@ This is ordered by impact-to-effort and keeps performance in mind.
 - ~~depth tint curve that preserves midground contrast~~
 
 4. ~~Ship material upgrade:~~
-- ~~keep texture fidelity~~
-- ~~add controlled specular and rim highlights~~
+- ~~switch active ships to a monochrome shiny silver material~~
+- ~~add controlled high-specular Phong response~~
 - ~~avoid flat-white fallback look in any path~~
 
 ## Phase 2: Motion And Mood (High Value)

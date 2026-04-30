@@ -23,7 +23,7 @@ Typical contents:
 Current runtime systems rely on:
 
 - `OBJ` for geometry
-- `Textures` for ship skins
+- `Textures` only for inactive/future ship skins
 
 ## Naming Conventions
 
@@ -38,7 +38,7 @@ Examples:
 - `Executioner_Blue.png`
 - `Imperial_Red.png`
 
-This naming scheme is important because both the gameplay renderer and the store preview depend on it.
+This naming scheme is kept for future skin support and persistence compatibility. The active gameplay renderer and store preview currently use monochrome silver ship materials instead of texture images.
 
 ## Gameplay Renderer Loading
 
@@ -46,9 +46,10 @@ Gameplay uses `AssetManager.mm` plus `GameRenderer.mm`.
 
 Current behavior:
 
-- `GameEngineWrapper` stores the selected mesh and texture names
-- `GameRenderer` asks `AssetManager` to load those asset names
+- `GameEngineWrapper` stores the selected mesh name and still carries a legacy texture name for future skin support
+- `GameRenderer` asks `AssetManager` to load the selected ship mesh
 - `AssetManager` searches bundled resources recursively
+- the ship body is rendered as a fixed shiny silver material using simple Phong shading and no texture sampling
 
 This recursive search was added so the app can bundle full ship folders instead of copying flat Bob-era resources into the app root.
 
@@ -60,8 +61,8 @@ Current behavior:
 
 - loads the selected ship from `Bundle.main`
 - expects the object file at `ShipName/OBJ/ShipName.obj`
-- expects textures under `ShipName/Textures/`
-- applies the default blue texture to preview materials while visible skin selection is paused
+- ignores ship textures while visible skin selection is paused
+- applies the same shiny monochrome silver material direction used by gameplay
 - rotates the ship slowly in place
 
 ## Xcode Resource Setup
@@ -98,8 +99,8 @@ Current gameplay rendering rules:
 - terrain uses one flat level-theme base color for all faces; height/elevation gradients and path glow are disabled
 - collision feedback temporarily overrides terrain albedo to vivid red and raises the hit column with a `0.5s` sine pop, without changing persistent terrain state
 - wireframe-like terrain edges are shader-rendered in black only on visible faces
-- ship rendering uses a stencil-masked 1-pixel black outline around the textured body
-- ship texture/rim treatment is selected by explicit render style, not by "any non-terrain mesh", so obstacles stay visually separate from the vehicle
+- ship rendering uses a stencil-masked 1-pixel black outline around a monochrome shiny silver body
+- ship material treatment is selected by explicit render style, not by "any non-terrain mesh", so obstacles stay visually separate from the vehicle
 
 ### SceneKit
 
@@ -107,7 +108,7 @@ Used for:
 
 - store preview
 - rotating showcase model
-- texture/material preview
+- silver material preview
 
 This split is currently pragmatic:
 
@@ -126,13 +127,13 @@ This split is currently pragmatic:
 When adding new ships, keep these rules:
 
 1. Use one folder per ship.
-2. Keep mesh and texture filenames aligned with the ship enum naming.
-3. Ensure at least one default texture exists and follows the same naming convention.
+2. Keep mesh filenames aligned with the ship enum naming.
+3. Keep texture filenames aligned only if skins are reintroduced.
 4. Prefer consistent orientation and scale between ships.
 5. If adding a new source format, do not change runtime loading unless necessary.
 
 ## Recommended Future Improvements
 
 - Move ship definitions into a data file that also describes asset names and stats.
-- Add validation tooling for missing textures or naming mismatches.
+- Add validation tooling for missing meshes and optional skin naming mismatches.
 - Consider a shared material/preview helper so store preview and gameplay visuals stay closer over time.

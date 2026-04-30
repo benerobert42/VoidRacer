@@ -38,10 +38,11 @@ The current presentation direction mixes:
 14. Terrain collisions damage the ship and slow it down instead of killing instantly.
 15. A short camera shake reinforces the impact.
 16. The in-run HUD stays sparse: centered life bar, thinner armor bar, and score below them.
-17. Contract and mission detail is reserved for pause/post-run surfaces instead of crowding the notch area during play.
-18. The run ends when health reaches zero or the chaser catches the player.
-19. Credits earned during the run are combined with contract/rank rewards.
-20. Death routes to a dedicated game-over screen with a prominent retry option and last-run summary.
+17. The iOS status bar is hidden across all app views so system chrome does not overlap or visually compete with the game UI.
+18. Contract and mission detail is reserved for pause/post-run surfaces instead of crowding the notch area during play.
+19. The run ends when health reaches zero or the chaser catches the player.
+20. Credits earned during the run are combined with contract/rank rewards.
+21. Death routes to a dedicated game-over screen with a prominent retry option and last-run summary.
 
 ## Current Skill Drivers
 
@@ -88,11 +89,25 @@ The run starts at a lower speed and increases steadily over time.
 
 Current implementation details:
 
-- starts around `70`
-- ramps toward `140` over the first minute
-- caps at `300`
+- starts around `66`
+- doubles every `180` seconds
+- the chaser matches the same baseline speed so clean driving does not lose ground passively
+- the ship now flies lower over the terrain, at roughly half the previous hover height
 
-This creates a natural pressure curve even before the chaser and terrain complexity are considered.
+This creates a natural pressure curve while keeping terrain geometry stable.
+
+### Riverbed Stability
+
+The baseline terrain now uses a single deterministic river centerline.
+
+Current implementation details:
+
+- no time-based curve-frequency ramp
+- no split or branching riverbed in the stabilization baseline
+- the river centerline starts at full procedural curvature instead of using an origin warm-up zone
+- CPU collision terrain and Metal-rendered terrain share the same single-channel distance function
+
+This prevents the opening section from producing merged branch channels that make the riverbed look much wider than the later run.
 
 ### Early Progression Layer
 
@@ -116,6 +131,8 @@ Current behavior:
 
 - horizontal drag is mapped into a steering range of `-1` to `1`
 - the simulation moves toward a target lateral position
+- lateral movement uses the original proportional snap response so touch intensity remains immediate
+- ship yaw has a render-only turn attitude boost so the hull visibly faces into turns without changing input or physics
 - return-to-center is slower than active steering
 
 This gives the movement a controlled hover feel rather than an instant lane snap.

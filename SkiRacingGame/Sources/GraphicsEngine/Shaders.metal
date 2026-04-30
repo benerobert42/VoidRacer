@@ -51,7 +51,6 @@ struct GridCellGPU {
 constant float RIVER_CURVE_SCALE = 0.92;
 constant float RIVER_PRIMARY_FREQUENCY = 0.0074;
 constant float RIVER_SECONDARY_FREQUENCY = 0.021;
-constant float RIVER_BRANCH_FREQUENCY = 0.0046;
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -68,20 +67,9 @@ float getDistFromRiverMetal(float gridX, float gridZ) {
     const float kRiverPlayableHalfWidth = 100.0;
     const float kRiverTransitionWidth = 40.0;
     const float kRiverCenterLimit = kRiverPlayableHalfWidth - kRiverTransitionWidth;
-    float dampening = smoothstep(0.0, 500.0, abs(gridZ));
     float riverBaseX = (sin(gridZ * RIVER_PRIMARY_FREQUENCY) * (31.0 * RIVER_CURVE_SCALE) +
-                        sin(gridZ * RIVER_SECONDARY_FREQUENCY + 0.9) * (16.0 * RIVER_CURVE_SCALE)) * dampening;
-    
-    // Split driver: positive when river branches
-    float splitFactor = (sin(gridZ * RIVER_BRANCH_FREQUENCY + 10.0) * 0.72) +
-                        (sin(gridZ * 0.0095 + 1.7) * 0.28);
-    float branchOffset = smoothstep(0.04, 0.52, splitFactor) * (21.0 * RIVER_CURVE_SCALE);
-    
-    if (branchOffset > 2.0) {
-        float riverX1 = clamp(riverBaseX + branchOffset, -kRiverCenterLimit, kRiverCenterLimit);
-        float riverX2 = clamp(riverBaseX - branchOffset, -kRiverCenterLimit, kRiverCenterLimit);
-        return min(abs(gridX - riverX1), abs(gridX - riverX2));
-    }
+                        sin(gridZ * RIVER_SECONDARY_FREQUENCY + 0.9) * (16.0 * RIVER_CURVE_SCALE));
+
     return abs(gridX - clamp(riverBaseX, -kRiverCenterLimit, kRiverCenterLimit));
 }
 
@@ -215,7 +203,7 @@ float terrainHeight(float2 xz, float slopeAngle) {
     // River path has noticeable but short noise (max 1/3 the 15 unit depth -> 5 units amplitude)
     float h_river = fbm_simple(tc, 2) * 2.5 - 17.5; // approx -17.5 to -12.5 height
     
-    // Blend them based on distance from the nearest river branch center
+    // Blend them based on distance from the river centerline
     float distFromCenter = getDistFromRiverMetal(gridX, gridZ);
     
     // Path is 15 units wide (flat riverbed, total width 30), then sharply rising to mountain
@@ -337,7 +325,7 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]],
 // ═══════════════════════════════════════════════════════════════════
 // ── PBR Helpers (Mobile-optimised Cook-Torrance) ──────────────────
 // Disabled for now. The baseline renderer uses simple Phong shading
-// until geometry, culling, and texture readability are stable.
+// until geometry, culling, and material readability are stable.
 // ═══════════════════════════════════════════════════════════════════
 
 // GGX / Trowbridge-Reitz Normal Distribution Function
@@ -631,26 +619,23 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         // ── VEHICLE / OBSTACLES: simple Phong shading ───────────
         // ═════════════════════════════════════════════════════════
         float3 N = normalize(in.worldNormal);
+        bool isShip = uniforms.renderStyle == 1;
         float3 surfaceColor = baseColor;
         bool hasTexture = uniforms.useTexture == 1;
-        if (!hasTexture) {
+        if (!hasTexture && !isShip) {
             surfaceColor = baseColor * 0.72 + keyTint * 0.18;
         }
 
-        bool isShip = uniforms.renderStyle == 1;
-
-        float3 ambient = surfaceColor * (isShip ? 0.30 : 0.20);
+        float3 ambient = surfaceColor * (isShip ? 0.26 : 0.20);
         float3 lit = ambient;
-        lit += phongDirectionalLight(surfaceColor, N, viewDir, keyLightDir, keyLightColor, isShip ? 0.86 : 0.72, isShip ? 36.0 : 18.0, isShip ? 0.18 : 0.08);
-        lit += phongDirectionalLight(surfaceColor, N, viewDir, fillLightDir, fillLightColor, isShip ? 0.34 : 0.26, 10.0, isShip ? 0.04 : 0.02);
+        lit += phongDirectionalLight(surfaceColor, N, viewDir, keyLightDir, keyLightColor, isShip ? 0.94 : 0.72, isShip ? 96.0 : 18.0, isShip ? 0.62 : 0.08);
+        lit += phongDirectionalLight(surfaceColor, N, viewDir, fillLightDir, fillLightColor, isShip ? 0.32 : 0.26, isShip ? 32.0 : 10.0, isShip ? 0.16 : 0.02);
 
         if (isShip) {
-            // Ship: subtle neon rim separation without washing out the texture.
+            // Ship: monochrome shiny silver, separated by specular response and stencil outline.
             float shipRim = pow(1.0 - saturate(dot(N, viewDir)), 1.6);
-            float3 separationTint = mix(float3(0.96, 0.96, 1.0), glowTint, 0.52);
             finalColor = lit;
-            finalColor += separationTint * shipRim * 0.28;
-            finalColor += glowTint * shipRim * 0.14;
+            finalColor += float3(0.18, 0.18, 0.19) * shipRim;
         } else {
             // Obstacles: biome tinted Phong.
             finalColor = lit;
@@ -659,7 +644,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
 
         // Speed tint
         float speedFx = saturate((uniforms.vehicleSpeed - 90.0) / 240.0);
-        finalColor += glowTint * speedFx * (isShip ? 0.08 : 0.06);
+        finalColor += isShip ? float3(speedFx * 0.035) : glowTint * speedFx * 0.06;
     }
 
     // ── Atmospheric perspective + fog + Space Haze ────────────────

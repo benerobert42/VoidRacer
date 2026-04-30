@@ -95,7 +95,7 @@ Skin texture assets currently exist for each ship:
 
 Visible skin buying/equipping is currently paused.
 
-The active game and store preview path uses the default blue texture for each ship while the ship-only store is being stabilized.
+The active game and store preview path ignores these textures and renders every ship with the default shiny silver material while the ship-only store is being stabilized.
 
 ## Track Content
 
@@ -121,13 +121,15 @@ Current in-run HUD includes:
 - centered armor bar
 - near-miss text feedback
 
+The iOS status bar is hidden across all app views so clock, Wi-Fi, and battery chrome do not overlap menu, store, level-selection, or gameplay controls.
+
 Mission/contract detail is intentionally kept out of the active top HUD and should appear on pause or post-run surfaces.
 
 ## Current Content Rules
 
 - ship ownership persists across launches
 - inactive skin ownership data may persist from earlier builds
-- each ship currently resolves to its default blue texture
+- each ship currently renders with the default shiny silver material
 - the equipped ship determines the gameplay mesh used during the run
 
 ## Open Content Questions

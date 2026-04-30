@@ -464,7 +464,7 @@ class AppState: ObservableObject {
     }
     
     func textureName(for ship: ShipID) -> String {
-        // Skins are currently paused in the visible game loop; keep every ship on its default texture.
+        // Kept for inactive skin persistence; active render paths currently use a monochrome silver material.
         "\(ship.rawValue)_\(ShipSkin.blue.rawValue)"
     }
     

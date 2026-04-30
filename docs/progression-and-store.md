@@ -60,7 +60,7 @@ Current contract tracks:
 New players currently begin with:
 
 - one owned ship: `Executioner`
-- the default `Executioner_Blue` texture applied internally
+- the default shiny silver ship material applied in gameplay and store preview
 - a starting currency balance in `AppState`
 
 ## Current Unlock Catalog
@@ -79,7 +79,7 @@ Current ship prices:
 
 Skins are paused in the visible store and gameplay loop.
 
-The asset folders still contain multiple texture files, and the persistence model still has skin storage for future use, but the current game path always resolves each ship to its default blue texture.
+The asset folders still contain multiple texture files, and the persistence model still has skin storage for future use, but the current visible game path ignores ship textures and renders every ship as monochrome shiny silver.
 
 ## Current Store Layout
 
@@ -92,6 +92,8 @@ Current behavior:
 - each page gives most of the screen to the rotating 3D ship model
 - each page shows simple stat lines for life, armor, and speed
 - price and the buy/equip action live directly below the stats
+- all buy/equip controls use the same neon action color, independent of ship accent
+- the only top store chrome is an arrow-only back control
 
 This layout supports a mobile-game style loop:
 
@@ -119,7 +121,7 @@ These values currently support presentation and future balancing direction. They
 
 - free starter ship
 - forgiving first collectible anchor
-- default blue texture available immediately
+- default silver material available immediately
 
 ### Challenger
 

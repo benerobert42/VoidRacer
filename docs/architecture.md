@@ -5,10 +5,11 @@ This document describes the current structure of the game as implemented in the 
 ## High-Level Stack
 
 - `SwiftUI` drives the app shell, menu flow, store flow, and the in-game HUD.
+- The iOS status bar is hidden globally so phone system chrome does not overlap menu, store, level-select, or gameplay controls.
 - `GameEngineWrapper` bridges Swift and Objective-C++ into the C++ game simulation.
 - `C++` owns the core simulation state for the vehicle, track, and physics update loop.
 - `Metal` renders gameplay.
-- `SceneKit` is currently used in the store to preview ship models with their default textures.
+- `SceneKit` is currently used in the store to preview ship models with the same monochrome silver material direction used in gameplay.
 
 ## App Flow
 
@@ -85,6 +86,8 @@ Current responsibilities:
 - let the player browse ships by horizontal swiping
 - show a large rotating 3D preview for each ship page
 - show simplified ship attributes and price
+- keep the top chrome to an arrow-only back control so the store always has a clear escape route
+- use one consistent neon action color for buy/equip controls across all ships
 - let the player buy or equip ships
 - keep skins hidden while the core ship store is simplified
 
@@ -96,6 +99,7 @@ Current responsibilities:
 - play a short ship drop-in animation before controls unlock
 - forward steering drag input to the engine
 - display the minimal in-run HUD
+- keep the iOS status bar hidden globally so clock, Wi-Fi, and battery chrome do not compete with app UI
 - trigger near-miss messaging
 - delay death handoff briefly before game-over routing
 - bank run coins into the persistent store economy when a run ends
@@ -125,7 +129,7 @@ Gameplay rendering is handled by:
 Current renderer behavior:
 
 - loads the equipped ship mesh by name
-- loads the equipped texture by name
+- ignores ship textures for the current monochrome material baseline
 - falls back to generated geometry if needed
 - renders terrain and obstacles with Metal
 - supports a preview-only mode that scrolls terrain without gameplay input
@@ -137,6 +141,8 @@ Current renderer behavior:
 - renders terrain in one opaque pass only
 - renders visible-face neon wireframe edges inside the terrain shader
 - renders the ship with a stencil-masked 1-pixel black outline so the body stays readable without glow
+- renders the ship body as shiny monochrome silver using simple Phong shading and high specular response
+- applies a render-only yaw boost so the ship visually faces into turns without altering controls or physics
 - uses an explicit ship render style for the vehicle body so scenery and obstacle meshes cannot accidentally receive ship material shading
 
 ### Store Preview Rendering
@@ -146,8 +152,8 @@ The store uses a separate preview path in SwiftUI via `SceneKit`.
 Current preview behavior:
 
 - loads `OBJ` assets from the bundled ship folder
-- loads the default blue texture from that ship's `Textures` folder while skins are paused
-- applies the texture to the preview geometry
+- ignores texture images while skins are paused
+- applies a shiny monochrome silver Phong material to the preview geometry
 - rotates the ship slowly in place
 
 This keeps the store preview decoupled from the gameplay renderer.
@@ -209,6 +215,7 @@ The current implementation uses:
 
 - a `60 x 80` terrain grid with gameplay constrained to the inner corridor
 - height-derived terrain data
+- a single deterministic river centerline shared by CPU collision and Metal rendering
 - one active opaque terrain-column type
 - transient collision-effect timers for hit feedback
 - no active destructible, transparent, pad, or terrain-mutation states in the baseline renderer
@@ -219,7 +226,10 @@ The current implementation uses:
 Handles the per-frame update loop:
 
 - ramps base forward speed over time
-- clamps and moves lateral steering
+- starts the run at roughly `66` baseline forward speed
+- doubles baseline forward speed every `180` seconds
+- keeps the ship at the lower current hover height over the riverbed
+- clamps and moves lateral steering with the original proportional snap response
 - advances the chaser wall
 - keeps the chaser matched to the run's baseline speed so a clean line does not lose ground passively
 - force-disables reserved power-up timers while the solid-terrain baseline is active

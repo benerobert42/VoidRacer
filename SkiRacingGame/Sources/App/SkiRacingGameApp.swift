@@ -31,5 +31,6 @@ struct ContentView: View {
             }
         }
         .ignoresSafeArea()
+        .statusBarHidden(true)
     }
 }

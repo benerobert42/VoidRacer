@@ -10,16 +10,12 @@ constexpr float kCollisionCooldownDuration = 0.16f;
 constexpr float kCollisionSlowdownMultiplier = 0.58f;
 constexpr float kCollisionEffectDuration = 0.5f;
 constexpr float kTerrainLeadDistance = 150.0f;
+constexpr float kFlightHeight = 6.0f;
+constexpr float kSpeedDoublingIntervalSeconds = 180.0f;
 constexpr int kCollisionBaseDamage = 6;
 constexpr int kCollisionBonusDamagePerExtraCell = 2;
 constexpr int kMaxCollisionDamage = 12;
 constexpr int kDebugLevel = 3;
-
-static float smoothstepf(float edge0, float edge1, float x) {
-    float t = (x - edge0) / (edge1 - edge0);
-    t = fmaxf(0.0f, fminf(1.0f, t));
-    return t * t * (3.0f - 2.0f * t);
-}
 
 static int worldToGridCoord(float worldValue) {
     return (int)floorf((worldValue + TerrainGrid::COLUMN_SPACING * 0.5f) / TerrainGrid::COLUMN_SPACING);
@@ -96,14 +92,7 @@ void PhysicsWorld::update(float deltaTime, Vehicle& vehicle, Track& track, float
     
     // ── Constants ─────────────────────────────────────────────────
     const float startSpeed = 66.0f;
-    const float midRunSpeed = 126.0f;
-    const float lateRunSpeed = 182.0f;
-    float firstRamp = smoothstepf(0.0f, 55.0f, totalTime);
-    float secondRamp = smoothstepf(60.0f, 165.0f, totalTime);
-    float baseSpeed = startSpeed +
-                      (midRunSpeed - startSpeed) * firstRamp +
-                      (lateRunSpeed - midRunSpeed) * secondRamp;
-    baseSpeed = fminf(baseSpeed, 220.0f);
+    float baseSpeed = startSpeed * powf(2.0f, totalTime / kSpeedDoublingIntervalSeconds);
     const float colSpacing = TerrainGrid::COLUMN_SPACING;
     auto snapToGrid = [colSpacing](float value) {
         return floorf((value + colSpacing * 0.5f) / colSpacing) * colSpacing;
@@ -133,7 +122,7 @@ void PhysicsWorld::update(float deltaTime, Vehicle& vehicle, Track& track, float
     vehicle.velocity.z = -currentSpeed;
     vehicle.position.z += vehicle.velocity.z * deltaTime;
     
-    float flightHeight = 12.0f;
+    float flightHeight = kFlightHeight;
     vehicle.position.y = flightHeight;
 
     // ── Lateral Steering (Linear with proportional snap) ─────────
@@ -148,7 +137,7 @@ void PhysicsWorld::update(float deltaTime, Vehicle& vehicle, Track& track, float
     float propFactor = hasSteeringInput ? 5.0f : 2.5f;
     float moveSpeed = (fabsf(deltaX) * propFactor) + minSpeed;
     float moveStep = moveSpeed * deltaTime;
-    
+
     if (fabsf(deltaX) <= moveStep) {
         vehicle.position.x = targetX;
     } else {

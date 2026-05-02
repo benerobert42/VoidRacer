@@ -1,6 +1,7 @@
 #include "PhysicsWorld.hpp"
 #include "MathUtils.hpp"
 #include <algorithm>
+#include <cmath>
 #include <math.h>
 
 namespace {
@@ -12,10 +13,17 @@ constexpr float kCollisionEffectDuration = 0.5f;
 constexpr float kTerrainLeadDistance = 150.0f;
 constexpr float kFlightHeight = 6.0f;
 constexpr float kSpeedDoublingIntervalSeconds = 180.0f;
+constexpr float kBoostDuration = 3.0f;
+constexpr float kBoostIntervalMeanSeconds = 30.0f;
+constexpr float kBoostIntervalStdDevSeconds = 10.0f;
+constexpr float kBoostPadSpawnLeadTime = 1.55f;
+constexpr float kFirstBoostSpawnTime = 4.0f;
 constexpr int kCollisionBaseDamage = 6;
 constexpr int kCollisionBonusDamagePerExtraCell = 2;
 constexpr int kMaxCollisionDamage = 12;
 constexpr int kDebugLevel = 3;
+constexpr int kBoostPadRows = 5;
+constexpr int kBoostPadCols = 3;
 
 static int worldToGridCoord(float worldValue) {
     return (int)floorf((worldValue + TerrainGrid::COLUMN_SPACING * 0.5f) / TerrainGrid::COLUMN_SPACING);
@@ -25,10 +33,30 @@ static float gridToWorldCoord(int gridValue) {
     return (float)gridValue * TerrainGrid::COLUMN_SPACING;
 }
 
+static bool boostPadPatternIsDark(int row, int col) {
+    constexpr bool pattern[kBoostPadRows][kBoostPadCols] = {
+        { true,  false, true  },
+        { false, true,  false },
+        { false, false, false },
+        { true,  false, true  },
+        { false, true,  false }
+    };
+    return pattern[row][col];
+}
+
+static float nextBoostRandom01(uint32_t& state) {
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    return ((state & 0x00FFFFFFu) + 1.0f) / 16777217.0f;
+}
+
 }
 
 PhysicsWorld::PhysicsWorld() {
     gravity = simd_make_float3(0.0f, -9.81f, 0.0f);
+    boostRandomState = 0xA341316Cu;
+    nextBoostSpawnTime = kFirstBoostSpawnTime;
 }
 
 void PhysicsWorld::updateEffectState(float deltaTime) {
@@ -52,6 +80,16 @@ void PhysicsWorld::syncVisibleGridState(Track& track, float renderOriginZ) {
             cell.flags = 0;
             cell.baseHeight = 0.0f;
             cell.collisionEffectTimer = 0.0f;
+
+            float worldX = ((float)col - (TerrainGrid::WIDTH / 2)) * TerrainGrid::COLUMN_SPACING;
+            float worldZ = renderOriginZ - ((float)row * TerrainGrid::COLUMN_SPACING);
+            bool boostPadDark = false;
+            if (getBoostPadCell(worldX, worldZ, boostPadDark)) {
+                cell.setFlag(CellFlags::BoostPad);
+                if (boostPadDark) {
+                    cell.setFlag(CellFlags::BoostPadDark);
+                }
+            }
         }
     }
 
@@ -67,6 +105,89 @@ void PhysicsWorld::syncVisibleGridState(Track& track, float renderOriginZ) {
             row >= 0 && row < TerrainGrid::LENGTH) {
             track.grid.cells[row * TerrainGrid::WIDTH + col].collisionEffectTimer = cellRecord.timer;
         }
+    }
+}
+
+bool PhysicsWorld::getBoostPadCell(float worldX, float worldZ, bool& isDark) const {
+    int gridX = worldToGridCoord(worldX);
+    int gridZ = worldToGridCoord(worldZ);
+
+    for (const auto& pad : boostPads) {
+        int padRow = pad.firstRowGridZ - gridZ;
+        if (padRow < 0 || padRow >= kBoostPadRows) {
+            continue;
+        }
+
+        int localCol = gridX - pad.centerGridX + (kBoostPadCols / 2);
+        if (localCol < 0 || localCol >= kBoostPadCols) {
+            continue;
+        }
+
+        isDark = boostPadPatternIsDark(padRow, localCol);
+        return true;
+    }
+
+    return false;
+}
+
+bool PhysicsWorld::isBoostPadPlacementValid(int centerGridX, int firstRowGridZ, float slopeAngle) const {
+    for (int row = 0; row < kBoostPadRows; row++) {
+        int gridZ = firstRowGridZ - row;
+        for (int col = 0; col < kBoostPadCols; col++) {
+            int gridX = centerGridX + col - (kBoostPadCols / 2);
+            float worldX = gridToWorldCoord(gridX);
+            float worldZ = gridToWorldCoord(gridZ);
+            float height = MathUtils::getTerrainHeight(worldX, worldZ, slopeAngle);
+            if (height > kFlightHeight - 5.0f) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool PhysicsWorld::findBoostPadPlacement(float targetWorldZ, float slopeAngle, BoostPadRecord& outPad) const {
+    int targetGridZ = worldToGridCoord(targetWorldZ);
+    for (int offset = 0; offset < 36; offset++) {
+        int signedOffset = (offset % 2 == 0) ? -(offset / 2) : ((offset + 1) / 2);
+        int firstRowGridZ = targetGridZ + signedOffset;
+        int middleRowGridZ = firstRowGridZ - (kBoostPadRows / 2);
+        int centerGridX = worldToGridCoord(MathUtils::getRiverCenterX(gridToWorldCoord(middleRowGridZ)));
+        if (isBoostPadPlacementValid(centerGridX, firstRowGridZ, slopeAngle)) {
+            outPad = { centerGridX, firstRowGridZ };
+            return true;
+        }
+    }
+    return false;
+}
+
+float PhysicsWorld::sampleNextBoostInterval() {
+    float u1 = fmaxf(nextBoostRandom01(boostRandomState), 0.0001f);
+    float u2 = nextBoostRandom01(boostRandomState);
+    float normal = sqrtf(-2.0f * logf(u1)) * cosf(2.0f * (float)M_PI * u2);
+    return fminf(fmaxf(kBoostIntervalMeanSeconds + normal * kBoostIntervalStdDevSeconds, 12.0f), 55.0f);
+}
+
+void PhysicsWorld::scheduleBoostPads(Vehicle& vehicle, Track& track, float totalTime, float currentSpeed) {
+    int spawned = 0;
+    while (totalTime >= nextBoostSpawnTime && spawned < 3) {
+        BoostPadRecord pad;
+        float targetWorldZ = vehicle.position.z - currentSpeed * kBoostPadSpawnLeadTime;
+        if (findBoostPadPlacement(targetWorldZ, track.slopeAngle, pad)) {
+            bool duplicate = false;
+            for (const auto& existing : boostPads) {
+                if (abs(existing.firstRowGridZ - pad.firstRowGridZ) < 8) {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (!duplicate) {
+                boostPads.push_back(pad);
+            }
+        }
+
+        nextBoostSpawnTime += sampleNextBoostInterval();
+        spawned++;
     }
 }
 
@@ -108,20 +229,28 @@ void PhysicsWorld::update(float deltaTime, Vehicle& vehicle, Track& track, float
         return;
     }
     
-    // Power-up systems are disabled while the solid terrain baseline is stabilized.
-    vehicle.boostTimer = 0.0f;
+    vehicle.boostTimer = fmaxf(0.0f, vehicle.boostTimer - deltaTime);
+    vehicle.boostMultiplier = vehicle.boostTimer > 0.0f ? 2.0f : 1.0f;
     vehicle.elevateTimer = 0.0f;
     vehicle.flattenWaveActive = false;
 
     // ── Forward Speed ────────────────────────────────────────────
-    float speedMult = 1.0f;
+    float speedMult = vehicle.boostMultiplier;
     float slowdownMult = (vehicle.collisionSlowdownTimer > 0.0f) ? kCollisionSlowdownMultiplier : 1.0f;
     float currentSpeed = baseSpeed * speedMult * slowdownMult;
     vehicle.velocity.z = -currentSpeed;
     vehicle.position.z += vehicle.velocity.z * deltaTime;
+    scheduleBoostPads(vehicle, track, totalTime, currentSpeed);
     
     float flightHeight = kFlightHeight;
     vehicle.position.y = flightHeight;
+
+    bool boostPadDark = false;
+    if (getBoostPadCell(vehicle.position.x, vehicle.position.z, boostPadDark)) {
+        vehicle.boostTimer = kBoostDuration;
+        vehicle.boostMultiplier = 2.0f;
+        vehicle.collisionSlowdownTimer = 0.0f;
+    }
 
     // ── Lateral Steering (Linear with proportional snap) ─────────
     float maxLateralDeviation = vehicle.visibleLateralLimit;
@@ -212,7 +341,7 @@ void PhysicsWorld::update(float deltaTime, Vehicle& vehicle, Track& track, float
 
     syncVisibleGridState(track, renderOriginZ);
 
-    if (terrainCollisionCellCount > 0 && levelType != kDebugLevel && vehicle.terrainCollisionCooldownTimer <= 0.0f) {
+    if (terrainCollisionCellCount > 0 && levelType != kDebugLevel && vehicle.boostTimer <= 0.0f && vehicle.terrainCollisionCooldownTimer <= 0.0f) {
         int damage = kCollisionBaseDamage + ((terrainCollisionCellCount - 1) * kCollisionBonusDamagePerExtraCell);
         damage = std::min(kMaxCollisionDamage, damage);
         vehicle.health = std::max(0, vehicle.health - damage);

@@ -137,7 +137,7 @@ public:
     }
 
     // Winding riverbed logic using a single stable centerline.
-    static float getDistFromRiver(float gridX, float gridZ) {
+    static float getRiverCenterX(float gridZ) {
         constexpr float kRiverPlayableHalfWidth = 100.0f;
         constexpr float kRiverTransitionWidth = 40.0f;
         constexpr float kRiverCenterLimit = kRiverPlayableHalfWidth - kRiverTransitionWidth;
@@ -147,7 +147,11 @@ public:
         float riverBaseX = (sinf(gridZ * kRiverPrimaryFrequency) * (31.0f * kRiverCurveScale) +
                             sinf(gridZ * kRiverSecondaryFrequency + 0.9f) * (16.0f * kRiverCurveScale));
 
-        return fabsf(gridX - clamp(riverBaseX, -kRiverCenterLimit, kRiverCenterLimit));
+        return clamp(riverBaseX, -kRiverCenterLimit, kRiverCenterLimit);
+    }
+
+    static float getDistFromRiver(float gridX, float gridZ) {
+        return fabsf(gridX - getRiverCenterX(gridZ));
     }
 
     // Returns the discrete column height for grid coords

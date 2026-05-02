@@ -240,7 +240,7 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]],
         float h = terrainHeight(float2(worldCenterX, worldCenterZ), uniforms.slopeAngle);
         
         GridCellGPU cell = gridState[instance_id];
-        out.cellFlags = cell.flags & 0u;
+        out.cellFlags = cell.flags;
         out.collisionTimer = cell.collisionTimer;
         out.cellCenterXZ = float2(worldCenterX, worldCenterZ);
         
@@ -602,10 +602,10 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
     if (uniforms.renderStyle == 6) {
         float speedFx = saturate((uniforms.vehicleSpeed - 85.0) / 190.0);
         float zTaper = 1.0 - smoothstep(0.22, 0.50, abs(in.localPosition.z));
-        float radialTaper = 1.0 - smoothstep(0.08, 0.46, length(in.localPosition.xy));
-        float alpha = zTaper * radialTaper * (0.34 + speedFx * 0.48);
-        float3 streakColor = uniforms.color * (1.55 + speedFx * 1.35);
-        streakColor += levelGlowTint(uniforms.levelType) * (0.24 + speedFx * 0.30);
+        float radialTaper = 1.0 - smoothstep(0.12, 0.52, length(in.localPosition.xy));
+        float alpha = saturate(zTaper * radialTaper * (0.68 + speedFx * 0.32));
+        float3 streakColor = uniforms.color * (2.10 + speedFx * 1.35);
+        streakColor += levelGlowTint(uniforms.levelType) * (0.42 + speedFx * 0.36);
         return float4(applyLevelGrade(saturate(streakColor), uniforms.levelType), alpha);
     }
 
@@ -655,8 +655,12 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         float sideMask = saturate(1.0 - topMask - bottomMask);
 
         float hitMask = step(0.001, in.collisionTimer);
+        bool isBoostPad = (in.cellFlags & 4u) != 0u;
+        bool isBoostPadDark = (in.cellFlags & 512u) != 0u;
         // Single albedo for every terrain face. Hit feedback only overrides it temporarily.
         float3 albedo = mix(levelTerrainBaseColor(uniforms.levelType), float3(1.0, 0.02, 0.0), hitMask);
+        float3 boostPadColor = isBoostPadDark ? float3(0.01, 0.01, 0.012) : float3(0.96, 0.96, 0.92);
+        albedo = mix(albedo, boostPadColor, topMask * (isBoostPad ? 1.0 : 0.0));
 
         // Use the actual cube face normal so top and side shading matches the column geometry.
         float3 N = faceNormal;
@@ -678,6 +682,12 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         float pathFlow = 0.86 + 0.14 * sin(in.worldPosition.z * 0.075 - uniforms.time * 1.35);
         float pathGlow = topMask * riverbedMask * pathFlow * (0.26 + riverCenterMask * 0.18);
         finalColor += (glowTint * 0.78 + keyTint * 0.22) * pathGlow;
+        if (isBoostPad && topMask > 0.5) {
+            float pulse = 0.88 + 0.12 * sin(uniforms.time * 8.0 + in.cellCenterXZ.y * 0.20);
+            float3 boostGlow = isBoostPadDark ? float3(0.0, 0.0, 0.0) : float3(1.0, 1.0, 0.92);
+            finalColor = mix(finalColor, boostGlow * 1.35, 0.88);
+            finalColor += (isBoostPadDark ? glowTint * 0.10 : glowTint * 0.42) * pulse;
+        }
 
         // Emissive colored wireframe on visible faces only. Vertical thickness is
         // world-scaled so tall columns do not get a dark band near the top edge.
@@ -696,13 +706,11 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         float sideTopEdges = sideMask * topEdgeY;
         float edgeMask = max(topFaceEdges, max(sideVerticalEdges, sideTopEdges));
 
-        // Draw edges on top faces and on side faces pointed toward the camera.
-        float isFrontFacing = step(0.1, dot(faceNormal, viewDir));
-        float visibleFaceMask = max(topMask, sideMask * isFrontFacing);
-        edgeMask *= visibleFaceMask;
-        float3 edgeColor = mix(keyTint, glowTint, 0.68);
+        // Back-face culling already removes hidden faces; keep all rasterized face edges neon.
+        edgeMask *= max(topMask, sideMask);
+        float3 edgeColor = isBoostPad ? (isBoostPadDark ? float3(0.02, 0.02, 0.025) : mix(float3(1.0), glowTint, 0.32)) : mix(keyTint, glowTint, 0.68);
         edgeColor = mix(edgeColor, float3(1.0, 0.05, 0.02), hitMask);
-        float edgeBoost = 0.70 + riverbedMask * 0.32 + topMask * 0.16;
+        float edgeBoost = (isBoostPad ? 1.45 : 0.70) + riverbedMask * 0.32 + topMask * 0.16;
         float edgeAmount = saturate(edgeMask);
         finalColor = mix(finalColor, max(finalColor, edgeColor * (0.72 + edgeBoost * 0.58)), edgeAmount * 0.90);
         finalColor += edgeColor * edgeAmount * edgeBoost * 0.48;

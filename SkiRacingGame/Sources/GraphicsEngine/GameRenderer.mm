@@ -553,25 +553,26 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         [enc setCullMode:MTLCullModeNone];
 
         float speedAmount = fminf(fmaxf((simd_length(vehicle.velocity) - 85.0f) / 170.0f, 0.0f), 1.0f);
-        int streakCount = 20 + (int)roundf(speedAmount * 14.0f);
-        float recycleDistance = 220.0f;
-        float flow = fmodf((float)_elapsedTime * (100.0f + simd_length(vehicle.velocity) * 0.85f), recycleDistance);
+        int streakCount = 34 + (int)roundf(speedAmount * 22.0f);
+        float recycleDistance = 235.0f;
+        float flow = fmodf((float)_elapsedTime * (140.0f + simd_length(vehicle.velocity) * 1.25f), recycleDistance);
         for (int i = 0; i < streakCount; i++) {
             float seed = (float)i * 12.9898f;
-            float lane = sinf(seed) * 0.5f + 0.5f;
+            float lane = sinf(seed * 0.47f) * 0.5f + 0.5f;
             float side = cosf(seed * 1.73f) < 0.0f ? -1.0f : 1.0f;
-            float x = visibleVehiclePosition.x + side * (10.0f + lane * 54.0f);
-            float y = visibleVehiclePosition.y + 4.0f + (sinf(seed * 0.61f) * 0.5f + 0.5f) * 22.0f;
-            float z = renderVehiclePosition.z - 190.0f + fmodf(flow + (float)i * 19.0f, recycleDistance);
-            if (z > renderVehiclePosition.z + 24.0f) {
-                continue;
+            float x = visibleVehiclePosition.x + side * (6.0f + lane * 44.0f);
+            float y = visibleVehiclePosition.y + 1.5f + (sinf(seed * 0.61f) * 0.5f + 0.5f) * 13.0f;
+            float phase = fmodf((float)i * 37.0f - flow, recycleDistance);
+            if (phase < 0.0f) {
+                phase += recycleDistance;
             }
+            float z = renderVehiclePosition.z - (18.0f + phase);
 
-            float length = 32.0f + speedAmount * 38.0f;
-            float thickness = 0.18f + speedAmount * 0.16f;
+            float length = 58.0f + speedAmount * 62.0f;
+            float thickness = 0.55f + speedAmount * 0.35f;
             matrix_float4x4 streakModel = simd_mul(matrix_translation(simd_make_float3(x, y, z)),
-                                                   matrix_scale(simd_make_float3(thickness, thickness, length)));
-            draw(_rockMesh, streakModel, levelType == 1 ? simd_make_float3(1.0f, 0.48f, 0.16f) : simd_make_float3(0.18f, 0.92f, 1.0f), nil, 0, 1, 6);
+                                                   matrix_scale(simd_make_float3(thickness, thickness * 0.42f, length)));
+            draw(_rockMesh, streakModel, levelType == 1 ? simd_make_float3(1.0f, 0.62f, 0.18f) : simd_make_float3(0.55f, 0.96f, 1.0f), nil, 0, 1, 6);
         }
 
         [enc setRenderPipelineState:_pipelineState];

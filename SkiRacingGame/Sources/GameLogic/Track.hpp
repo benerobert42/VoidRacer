@@ -21,7 +21,8 @@ enum class CellFlags : uint16_t {
     Equalizer     = 1 << 5,
     ElevationPad  = 1 << 6,
     FlattenPad    = 1 << 7,
-    Collided      = 1 << 8
+    Collided      = 1 << 8,
+    BoostPadDark  = 1 << 9
 };
 
 struct GridCell {

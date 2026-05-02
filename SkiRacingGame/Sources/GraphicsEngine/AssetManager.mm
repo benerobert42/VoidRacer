@@ -78,7 +78,8 @@
     MTKTextureLoader *loader = [[MTKTextureLoader alloc] initWithDevice:_device];
     NSDictionary *options = @{
         MTKTextureLoaderOptionTextureUsage: @(MTLTextureUsageShaderRead),
-        MTKTextureLoaderOptionTextureStorageMode: @(MTLStorageModePrivate)
+        MTKTextureLoaderOptionTextureStorageMode: @(MTLStorageModePrivate),
+        MTKTextureLoaderOptionSRGB: @NO
     };
     
     NSError *error = nil;

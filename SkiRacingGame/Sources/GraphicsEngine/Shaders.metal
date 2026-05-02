@@ -18,6 +18,11 @@ struct VertexOut {
     float collisionTimer;
 };
 
+struct FullscreenOut {
+    float4 position [[position]];
+    float2 uv;
+};
+
 struct Uniforms {
     float4x4 modelMatrix;
     float4x4 viewProjectionMatrix;
@@ -272,10 +277,10 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]],
         float3 worldNormal = normalize((uniforms.modelMatrix * float4(in.normal, 0.0)).xyz);
         float4 clipPos = uniforms.viewProjectionMatrix * worldPos;
         if (uniforms.renderStyle == 4) {
-            float4 normalClipPos = uniforms.viewProjectionMatrix * float4(worldPos.xyz + worldNormal, 1.0);
+            float4 centerClipPos = uniforms.viewProjectionMatrix * (uniforms.modelMatrix * float4(0.0, 0.0, 0.0, 1.0));
             float2 clipNDC = clipPos.xy / max(abs(clipPos.w), 0.0001);
-            float2 normalNDC = normalClipPos.xy / max(abs(normalClipPos.w), 0.0001);
-            float2 outlineDir = normalNDC - clipNDC;
+            float2 centerNDC = centerClipPos.xy / max(abs(centerClipPos.w), 0.0001);
+            float2 outlineDir = clipNDC - centerNDC;
             if (length(outlineDir) < 0.0001) {
                 outlineDir = float2(0.0, 1.0);
             } else {
@@ -294,12 +299,25 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]],
     return out;
 }
 
-/*
+vertex FullscreenOut vertex_fullscreen(uint vertexID [[vertex_id]]) {
+    float2 positions[3] = {
+        float2(-1.0, -1.0),
+        float2( 3.0, -1.0),
+        float2(-1.0,  3.0)
+    };
+
+    FullscreenOut out;
+    out.position = float4(positions[vertexID], 0.0, 1.0);
+    out.uv = positions[vertexID] * 0.5 + 0.5;
+    return out;
+}
+
 // ═══════════════════════════════════════════════════════════════════
-// ── PBR Helpers (Mobile-optimised Cook-Torrance) ──────────────────
-// Disabled for now. The baseline renderer uses simple Phong shading
-// until geometry, culling, and material readability are stable.
+// ── Ship PBR Helpers (Mobile-optimised Cook-Torrance) ─────────────
+// Terrain stays on the simpler Phong shader; these helpers are used by
+// the dedicated ship pipeline only.
 // ═══════════════════════════════════════════════════════════════════
+constant float kPI = 3.14159265359;
 
 // GGX / Trowbridge-Reitz Normal Distribution Function
 float DistributionGGX(float NdotH, float roughness) {
@@ -307,7 +325,7 @@ float DistributionGGX(float NdotH, float roughness) {
     float a2 = a * a;
     float NdotH2 = NdotH * NdotH;
     float denom  = NdotH2 * (a2 - 1.0) + 1.0;
-    return a2 / (PI * denom * denom + 0.0001);
+    return a2 / (kPI * denom * denom + 0.0001);
 }
 
 // Schlick approximation for Fresnel
@@ -360,11 +378,10 @@ float3 pbrDirectionalLight(float3 albedo,
     float3 kD = (float3(1.0) - F) * (1.0 - metallic);
     
     // Lambertian diffuse
-    float3 diffuse = kD * albedo / PI;
+    float3 diffuse = kD * albedo / kPI;
     
     return (diffuse + specular) * lightColor * lightIntensity * NdotL;
 }
-*/
 
 float3 phongDirectionalLight(float3 albedo,
                              float3 N,
@@ -480,6 +497,88 @@ float3 applyLevelGrade(float3 color, int levelType) {
     return saturate(graded);
 }
 
+fragment float4 fragment_ship_pbr(VertexOut in [[stage_in]],
+                                  constant Uniforms &uniforms [[buffer(1)]],
+                                  texture2d<float> roughnessTexture [[texture(0)]],
+                                  sampler textureSampler [[sampler(0)]]) {
+    float3 V = normalize(uniforms.cameraPosition - in.worldPosition + float3(0.001, 0.001, 0.001));
+    float3 N = normalize(in.worldNormal);
+    float3 keyTint = levelKeyTint(uniforms.levelType);
+    float3 glowTint = levelGlowTint(uniforms.levelType);
+    float3 fogBaseColor = levelFogColor(uniforms.levelType);
+
+    float roughnessSample = uniforms.useTexture == 1
+        ? roughnessTexture.sample(textureSampler, in.texCoord).r
+        : 0.22;
+    float roughness = clamp(roughnessSample * 0.42 + 0.08, 0.08, 0.48);
+    float metallic = 1.0;
+    float3 albedo = uniforms.color * float3(0.86, 0.88, 0.92);
+
+    float3 keyLightDir = normalize(float3(0.55, 1.0, -0.35));
+    float3 fillLightDir = normalize(float3(-0.35, 0.6, 0.55));
+    float3 keyLightColor = float3(1.0, 0.98, 0.94);
+    float3 fillLightColor = float3(0.6, 0.7, 0.85);
+
+    float3 direct = float3(0.0);
+    direct += pbrDirectionalLight(albedo, metallic, roughness, N, V, keyLightDir, keyLightColor, 2.8);
+    direct += pbrDirectionalLight(albedo, metallic, roughness, N, V, fillLightDir, fillLightColor, 0.95);
+
+    // Chrome needs something to reflect. This cheap environment term avoids
+    // a cubemap while still making the metallic BRDF readable in gameplay.
+    float3 R = reflect(-V, N);
+    float skyReflection = saturate(R.y * 0.5 + 0.5);
+    float horizonReflection = pow(1.0 - saturate(abs(R.y)), 4.0);
+    float movingBand = 0.5 + 0.5 * sin(R.x * 18.0 + R.z * 9.0 + uniforms.time * 0.8);
+    float3 lowReflection = fogBaseColor * 0.42 + glowTint * 0.28;
+    float3 highReflection = float3(0.96, 0.98, 1.0) + keyTint * 0.30;
+    float3 environment = mix(lowReflection, highReflection, pow(skyReflection, 0.62));
+    environment += glowTint * horizonReflection * (0.28 + movingBand * 0.16);
+
+    float3 F0 = mix(float3(0.04), albedo, metallic);
+    float3 fresnel = FresnelSchlick(saturate(dot(N, V)), F0);
+    float3 reflected = environment * fresnel * (1.0 - roughness * 0.55) * 1.28;
+
+    float rim = pow(1.0 - saturate(dot(N, V)), 1.55);
+    float speedFx = saturate((uniforms.vehicleSpeed - 90.0) / 240.0);
+    float3 finalColor = direct + reflected;
+    finalColor += float3(rim * 0.12);
+    finalColor += float3(speedFx * 0.035);
+
+    float dist = length(in.worldPosition - uniforms.vehiclePosition);
+    float2 fogRange = levelFogRange(uniforms.levelType);
+    float fogFactor = pow(smoothstep(fogRange.x, fogRange.y, dist), 1.35);
+    float3 fogColor = mix(fogBaseColor, keyTint * 0.5 + glowTint * 0.5, fogFactor);
+    finalColor = mix(finalColor, fogColor, fogFactor);
+
+    return float4(applyLevelGrade(saturate(finalColor), uniforms.levelType), 1.0);
+}
+
+fragment float4 fragment_ship_mask(VertexOut in [[stage_in]]) {
+    return float4(1.0, 1.0, 1.0, 1.0);
+}
+
+fragment float4 fragment_ship_outline(FullscreenOut in [[stage_in]],
+                                      constant Uniforms &uniforms [[buffer(1)]],
+                                      texture2d<float> shipMask [[texture(0)]],
+                                      sampler maskSampler [[sampler(0)]]) {
+    float2 pixel = uniforms.outlinePixelWidth / max(uniforms.viewportSize, float2(1.0));
+    float2 uv = float2(in.uv.x, 1.0 - in.uv.y);
+    float center = shipMask.sample(maskSampler, uv).r;
+
+    float neighbor = 0.0;
+    neighbor = max(neighbor, shipMask.sample(maskSampler, uv + float2( pixel.x, 0.0)).r);
+    neighbor = max(neighbor, shipMask.sample(maskSampler, uv + float2(-pixel.x, 0.0)).r);
+    neighbor = max(neighbor, shipMask.sample(maskSampler, uv + float2(0.0,  pixel.y)).r);
+    neighbor = max(neighbor, shipMask.sample(maskSampler, uv + float2(0.0, -pixel.y)).r);
+    neighbor = max(neighbor, shipMask.sample(maskSampler, uv + float2( pixel.x,  pixel.y)).r);
+    neighbor = max(neighbor, shipMask.sample(maskSampler, uv + float2(-pixel.x,  pixel.y)).r);
+    neighbor = max(neighbor, shipMask.sample(maskSampler, uv + float2( pixel.x, -pixel.y)).r);
+    neighbor = max(neighbor, shipMask.sample(maskSampler, uv + float2(-pixel.x, -pixel.y)).r);
+
+    float outline = step(0.5, neighbor) * (1.0 - step(0.5, center));
+    return float4(0.0, 0.0, 0.0, outline);
+}
+
 fragment float4 fragment_main(VertexOut in [[stage_in]],
                               constant Uniforms &uniforms [[buffer(1)]],
                               texture2d<float> colorTexture [[texture(0)]],
@@ -498,6 +597,16 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
     // ── Render style early-outs (silhouette, chaser wall, skybox) ──
     if (uniforms.renderStyle == 4) {
         return float4(0.0, 0.0, 0.0, 1.0);
+    }
+
+    if (uniforms.renderStyle == 6) {
+        float speedFx = saturate((uniforms.vehicleSpeed - 85.0) / 190.0);
+        float zTaper = 1.0 - smoothstep(0.22, 0.50, abs(in.localPosition.z));
+        float radialTaper = 1.0 - smoothstep(0.08, 0.46, length(in.localPosition.xy));
+        float alpha = zTaper * radialTaper * (0.34 + speedFx * 0.48);
+        float3 streakColor = uniforms.color * (1.55 + speedFx * 1.35);
+        streakColor += levelGlowTint(uniforms.levelType) * (0.24 + speedFx * 0.30);
+        return float4(applyLevelGrade(saturate(streakColor), uniforms.levelType), alpha);
     }
 
     if (uniforms.renderStyle == 5) {
@@ -526,9 +635,11 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
     }
 
     float3 baseColor = uniforms.color;
+    float3 textureColor = float3(1.0);
+    bool hasTexture = uniforms.useTexture == 1;
 
-    if (uniforms.useTexture == 1) {
-        float3 textureColor = colorTexture.sample(textureSampler, in.texCoord).rgb;
+    if (hasTexture) {
+        textureColor = colorTexture.sample(textureSampler, in.texCoord).rgb;
         baseColor = textureColor * (float3(0.78) + uniforms.color * 0.22);
     }
 
@@ -550,16 +661,26 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         // Use the actual cube face normal so top and side shading matches the column geometry.
         float3 N = faceNormal;
 
-        // Simple Phong lighting only; no height gradient, no path glow, no emissive terrain tint.
+        // Simple Phong lighting base; richer neon treatment is layered additively below
+        // so terrain remains one stable opaque pass on mobile.
         float3 ambient = albedo * mix(0.30, 0.52, hitMask);
         float3 lit = ambient;
         lit += phongDirectionalLight(albedo, N, viewDir, keyLightDir, keyLightColor, 0.72, 20.0, 0.06);
         lit += phongDirectionalLight(albedo, N, viewDir, fillLightDir, fillLightColor, 0.24, 8.0, 0.02);
 
         finalColor = lit;
+        float baseAO = sideMask * (1.0 - smoothstep(-0.50, -0.16, in.localPosition.y));
+        finalColor *= 1.0 - baseAO * mix(0.34, 0.12, hitMask);
 
-        // Black wireframe on visible faces only. Vertical thickness is world-scaled
-        // so tall columns do not get a dark band near the top edge.
+        float riverDistance = getDistFromRiverMetal(in.cellCenterXZ.x, in.cellCenterXZ.y);
+        float riverbedMask = 1.0 - smoothstep(13.0, 34.0, riverDistance);
+        float riverCenterMask = 1.0 - smoothstep(0.0, 17.0, riverDistance);
+        float pathFlow = 0.86 + 0.14 * sin(in.worldPosition.z * 0.075 - uniforms.time * 1.35);
+        float pathGlow = topMask * riverbedMask * pathFlow * (0.26 + riverCenterMask * 0.18);
+        finalColor += (glowTint * 0.78 + keyTint * 0.22) * pathGlow;
+
+        // Emissive colored wireframe on visible faces only. Vertical thickness is
+        // world-scaled so tall columns do not get a dark band near the top edge.
         float3 absPos = abs(in.localPosition);
         float edgeWidth = 0.014;
         float edgeSoftness = 0.010;
@@ -579,7 +700,12 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         float isFrontFacing = step(0.1, dot(faceNormal, viewDir));
         float visibleFaceMask = max(topMask, sideMask * isFrontFacing);
         edgeMask *= visibleFaceMask;
-        finalColor = mix(finalColor, float3(0.0), saturate(edgeMask * 0.95));
+        float3 edgeColor = mix(keyTint, glowTint, 0.68);
+        edgeColor = mix(edgeColor, float3(1.0, 0.05, 0.02), hitMask);
+        float edgeBoost = 0.70 + riverbedMask * 0.32 + topMask * 0.16;
+        float edgeAmount = saturate(edgeMask);
+        finalColor = mix(finalColor, max(finalColor, edgeColor * (0.72 + edgeBoost * 0.58)), edgeAmount * 0.90);
+        finalColor += edgeColor * edgeAmount * edgeBoost * 0.48;
 
         // ── Determine alpha for this fragment ───────────────────
         float alpha = 1.0;
@@ -594,21 +720,38 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         float3 N = normalize(in.worldNormal);
         bool isShip = uniforms.renderStyle == 1;
         float3 surfaceColor = baseColor;
-        bool hasTexture = uniforms.useTexture == 1;
-        if (!hasTexture && !isShip) {
+        if (isShip) {
+            // Chrome_Parametric is a white metallic material; its texture carries roughness detail.
+            surfaceColor = uniforms.color;
+        } else if (!hasTexture) {
             surfaceColor = baseColor * 0.72 + keyTint * 0.18;
         }
 
-        float3 ambient = surfaceColor * (isShip ? 0.26 : 0.20);
+        float chromeRoughness = hasTexture ? clamp(textureColor.r * 0.32 + 0.06, 0.06, 0.38) : 0.14;
+        float chromeSurfaceDetail = hasTexture ? ((textureColor.g + textureColor.b) * 0.5 - 0.5) : 0.0;
+        float shipSpecularStrength = mix(1.18, 0.62, chromeRoughness);
+        float shipShininess = mix(180.0, 56.0, chromeRoughness);
+
+        float3 ambient = surfaceColor * (isShip ? 0.16 : 0.20);
         float3 lit = ambient;
-        lit += phongDirectionalLight(surfaceColor, N, viewDir, keyLightDir, keyLightColor, isShip ? 0.94 : 0.72, isShip ? 96.0 : 18.0, isShip ? 0.62 : 0.08);
-        lit += phongDirectionalLight(surfaceColor, N, viewDir, fillLightDir, fillLightColor, isShip ? 0.32 : 0.26, isShip ? 32.0 : 10.0, isShip ? 0.16 : 0.02);
+        lit += phongDirectionalLight(surfaceColor, N, viewDir, keyLightDir, keyLightColor, isShip ? 0.98 : 0.72, isShip ? shipShininess : 18.0, isShip ? shipSpecularStrength : 0.08);
+        lit += phongDirectionalLight(surfaceColor, N, viewDir, fillLightDir, fillLightColor, isShip ? 0.38 : 0.26, isShip ? shipShininess * 0.45 : 10.0, isShip ? shipSpecularStrength * 0.32 : 0.02);
 
         if (isShip) {
-            // Ship: monochrome shiny silver, separated by specular response and stencil outline.
-            float shipRim = pow(1.0 - saturate(dot(N, viewDir)), 1.6);
-            finalColor = lit;
-            finalColor += float3(0.18, 0.18, 0.19) * shipRim;
+            float shipRim = pow(1.0 - saturate(dot(N, viewDir)), 1.35);
+            float3 reflectedDir = reflect(-viewDir, N);
+            float skyReflection = saturate(reflectedDir.y * 0.5 + 0.5);
+            float horizonReflection = pow(1.0 - saturate(abs(reflectedDir.y)), 5.0);
+            float movingReflectionBand = 0.5 + 0.5 * sin(reflectedDir.x * 18.0 + reflectedDir.z * 9.0 + uniforms.time * 0.8);
+            float3 lowReflection = fogBaseColor * 0.35 + glowTint * 0.22;
+            float3 highReflection = float3(0.92, 0.96, 1.0) + keyTint * 0.30;
+            float3 chromeReflection = mix(lowReflection, highReflection, pow(skyReflection, 0.72));
+            chromeReflection += glowTint * horizonReflection * (0.34 + movingReflectionBand * 0.18);
+            chromeReflection *= 1.0 - chromeRoughness * 0.68;
+
+            finalColor = lit * 0.34 + chromeReflection * 0.82;
+            finalColor += float3(shipRim * 0.22);
+            finalColor += float3(chromeSurfaceDetail * 0.045);
         } else {
             // Obstacles: biome tinted Phong.
             finalColor = lit;

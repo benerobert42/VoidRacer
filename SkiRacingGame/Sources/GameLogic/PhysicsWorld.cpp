@@ -89,7 +89,7 @@ void PhysicsWorld::update(float deltaTime, Vehicle& vehicle, Track& track, float
     float previousZ = vehicle.position.z;
     
     // ── Constants ─────────────────────────────────────────────────
-    const float startSpeed = 66.0f;
+    const float startSpeed = 99.0f;
     float baseSpeed = startSpeed * powf(2.0f, totalTime / kSpeedDoublingIntervalSeconds);
     const float colSpacing = TerrainGrid::COLUMN_SPACING;
     auto snapToGrid = [colSpacing](float value) {

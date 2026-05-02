@@ -13,7 +13,6 @@ struct MainMenuView: View {
                 
                 TerrainPreviewView(level: appState.selectedLevel, scrollSpeed: 34, preferredFramesPerSecond: 30)
                     .ignoresSafeArea()
-                    .scaleEffect(1.32, anchor: .trailing)
                     .clipped()
                 backgroundOverlay
                 

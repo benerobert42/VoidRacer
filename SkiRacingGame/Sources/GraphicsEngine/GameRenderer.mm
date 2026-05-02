@@ -37,10 +37,18 @@ struct GridCellGPU {
     id<MTLDevice> _device;
     id<MTLCommandQueue> _commandQueue;
     id<MTLRenderPipelineState> _pipelineState;
+    id<MTLRenderPipelineState> _shipPipelineState;
+    id<MTLRenderPipelineState> _shipMaskPipelineState;
+    id<MTLRenderPipelineState> _shipOutlineCompositePipelineState;
     id<MTLDepthStencilState> _depthState;
     MTLVertexDescriptor *_vertexDescriptor;
     id<MTLSamplerState> _samplerState;
+    id<MTLSamplerState> _maskSamplerState;
     id<MTLTexture> _dummyTexture;
+    id<MTLTexture> _chromeRoughnessTexture;
+    id<MTLTexture> _shipMaskTexture;
+    NSUInteger _shipMaskWidth;
+    NSUInteger _shipMaskHeight;
     
     MTKMesh *_vehicleMesh;
     
@@ -67,6 +75,7 @@ struct GridCellGPU {
     // Alpha-blended pipeline for non-terrain effects such as the chaser wall and ship outline.
     id<MTLRenderPipelineState> _blendPipelineState;
     id<MTLDepthStencilState> _transparentDepthState;
+    id<MTLDepthStencilState> _overlayDepthState;
     id<MTLDepthStencilState> _vehicleBodyStencilDepthState;
     id<MTLDepthStencilState> _vehicleOutlineStencilDepthState;
 }
@@ -148,6 +157,7 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         
         mtkView.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
         mtkView.depthStencilPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
+        mtkView.sampleCount = 4;
         mtkView.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0); // Pitch black void
         
         [self buildPipelinesWithView:mtkView];
@@ -167,6 +177,10 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     id<MTLLibrary> defaultLibrary = [_device newDefaultLibrary];
     id<MTLFunction> vertexFunction = [defaultLibrary newFunctionWithName:@"vertex_main"];
     id<MTLFunction> fragmentFunction = [defaultLibrary newFunctionWithName:@"fragment_main"];
+    id<MTLFunction> shipFragmentFunction = [defaultLibrary newFunctionWithName:@"fragment_ship_pbr"];
+    id<MTLFunction> shipMaskFragmentFunction = [defaultLibrary newFunctionWithName:@"fragment_ship_mask"];
+    id<MTLFunction> fullscreenVertexFunction = [defaultLibrary newFunctionWithName:@"vertex_fullscreen"];
+    id<MTLFunction> shipOutlineFragmentFunction = [defaultLibrary newFunctionWithName:@"fragment_ship_outline"];
     
     _vertexDescriptor = [[MTLVertexDescriptor alloc] init];
     _vertexDescriptor.attributes[0].format = MTLVertexFormatFloat3;
@@ -190,9 +204,40 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     desc.colorAttachments[0].pixelFormat = view.colorPixelFormat;
     desc.depthAttachmentPixelFormat = view.depthStencilPixelFormat;
     desc.stencilAttachmentPixelFormat = view.depthStencilPixelFormat;
+    desc.rasterSampleCount = view.sampleCount;
     
     _pipelineState = [_device newRenderPipelineStateWithDescriptor:desc error:&error];
     NSAssert(_pipelineState, @"Failed to create pipeline state: %@", error);
+
+    MTLRenderPipelineDescriptor *shipDesc = [desc copy];
+    shipDesc.label = @"Ship PBR Render Pipeline";
+    shipDesc.fragmentFunction = shipFragmentFunction;
+    _shipPipelineState = [_device newRenderPipelineStateWithDescriptor:shipDesc error:&error];
+    NSAssert(_shipPipelineState, @"Failed to create ship pipeline state: %@", error);
+
+    MTLRenderPipelineDescriptor *shipMaskDesc = [[MTLRenderPipelineDescriptor alloc] init];
+    shipMaskDesc.label = @"Ship Screen Mask Pipeline";
+    shipMaskDesc.vertexFunction = vertexFunction;
+    shipMaskDesc.fragmentFunction = shipMaskFragmentFunction;
+    shipMaskDesc.vertexDescriptor = _vertexDescriptor;
+    shipMaskDesc.colorAttachments[0].pixelFormat = MTLPixelFormatR8Unorm;
+    _shipMaskPipelineState = [_device newRenderPipelineStateWithDescriptor:shipMaskDesc error:&error];
+    NSAssert(_shipMaskPipelineState, @"Failed to create ship mask pipeline state: %@", error);
+
+    MTLRenderPipelineDescriptor *outlineDesc = [[MTLRenderPipelineDescriptor alloc] init];
+    outlineDesc.label = @"Ship Screen Outline Composite Pipeline";
+    outlineDesc.vertexFunction = fullscreenVertexFunction;
+    outlineDesc.fragmentFunction = shipOutlineFragmentFunction;
+    outlineDesc.colorAttachments[0].pixelFormat = view.colorPixelFormat;
+    outlineDesc.colorAttachments[0].blendingEnabled = YES;
+    outlineDesc.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+    outlineDesc.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+    outlineDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+    outlineDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    outlineDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+    outlineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    _shipOutlineCompositePipelineState = [_device newRenderPipelineStateWithDescriptor:outlineDesc error:&error];
+    NSAssert(_shipOutlineCompositePipelineState, @"Failed to create ship outline composite pipeline state: %@", error);
     
     // ── Blended pipeline for non-terrain effects ───────────
     MTLRenderPipelineDescriptor *blendDesc = [[MTLRenderPipelineDescriptor alloc] init];
@@ -210,6 +255,7 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     blendDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
     blendDesc.depthAttachmentPixelFormat = view.depthStencilPixelFormat;
     blendDesc.stencilAttachmentPixelFormat = view.depthStencilPixelFormat;
+    blendDesc.rasterSampleCount = view.sampleCount;
     _blendPipelineState = [_device newRenderPipelineStateWithDescriptor:blendDesc error:&error];
     NSAssert(_blendPipelineState, @"Failed to create blend pipeline: %@", error);
     
@@ -222,6 +268,11 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     transparentDepthDesc.depthCompareFunction = MTLCompareFunctionLess;
     transparentDepthDesc.depthWriteEnabled = NO;
     _transparentDepthState = [_device newDepthStencilStateWithDescriptor:transparentDepthDesc];
+
+    MTLDepthStencilDescriptor *overlayDepthDesc = [[MTLDepthStencilDescriptor alloc] init];
+    overlayDepthDesc.depthCompareFunction = MTLCompareFunctionAlways;
+    overlayDepthDesc.depthWriteEnabled = NO;
+    _overlayDepthState = [_device newDepthStencilStateWithDescriptor:overlayDepthDesc];
 
     MTLStencilDescriptor *vehicleBodyStencil = [[MTLStencilDescriptor alloc] init];
     vehicleBodyStencil.stencilCompareFunction = MTLCompareFunctionAlways;
@@ -259,6 +310,13 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     samplerDesc.sAddressMode = MTLSamplerAddressModeRepeat;
     samplerDesc.tAddressMode = MTLSamplerAddressModeRepeat;
     _samplerState = [_device newSamplerStateWithDescriptor:samplerDesc];
+
+    MTLSamplerDescriptor *maskSamplerDesc = [MTLSamplerDescriptor new];
+    maskSamplerDesc.minFilter = MTLSamplerMinMagFilterNearest;
+    maskSamplerDesc.magFilter = MTLSamplerMinMagFilterNearest;
+    maskSamplerDesc.sAddressMode = MTLSamplerAddressModeClampToEdge;
+    maskSamplerDesc.tAddressMode = MTLSamplerAddressModeClampToEdge;
+    _maskSamplerState = [_device newSamplerStateWithDescriptor:maskSamplerDesc];
     
     MTLTextureDescriptor *texDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:1 height:1 mipmapped:NO];
     texDesc.usage = MTLTextureUsageShaderRead;
@@ -275,6 +333,7 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     
     _vehicleMesh = [_assetManager loadMeshNamed:meshName extension:@"obj"];
     if (!_vehicleMesh) _vehicleMesh = [_assetManager generateFallbackCapsule];
+    _chromeRoughnessTexture = [_assetManager loadTextureNamed:@"Chrome_Parametric_roughness" extension:@"png"];
     
     _rockMesh     = [_assetManager generateRockMesh];
     _terrainMesh  = [_assetManager generateFallbackPlane];
@@ -288,6 +347,25 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
 
 - (void)mtkView:(MTKView *)view drawableSizeWillChange:(CGSize)size { }
 
+- (void)ensureShipMaskTextureForView:(MTKView *)view {
+    NSUInteger width = MAX((NSUInteger)view.drawableSize.width, 1);
+    NSUInteger height = MAX((NSUInteger)view.drawableSize.height, 1);
+    if (_shipMaskTexture && _shipMaskWidth == width && _shipMaskHeight == height) {
+        return;
+    }
+
+    MTLTextureDescriptor *desc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatR8Unorm
+                                                                                    width:width
+                                                                                   height:height
+                                                                                mipmapped:NO];
+    desc.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+    desc.storageMode = MTLStorageModePrivate;
+    _shipMaskTexture = [_device newTextureWithDescriptor:desc];
+    _shipMaskTexture.label = @"Ship Screen Mask";
+    _shipMaskWidth = width;
+    _shipMaskHeight = height;
+}
+
 - (void)drawInMTKView:(MTKView *)view {
     NSTimeInterval currentTime = CACurrentMediaTime();
     NSTimeInterval frameDelta = (_lastPresentTime == 0.0) ? (1.0 / 60.0) : (currentTime - _lastPresentTime);
@@ -298,11 +376,13 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     id<MTLCommandBuffer> cmdBuf = [_commandQueue commandBuffer];
     MTLRenderPassDescriptor *rpd = view.currentRenderPassDescriptor;
     if (!rpd) { [cmdBuf commit]; return; }
+    id<CAMetalDrawable> drawable = view.currentDrawable;
+    if (!drawable) { [cmdBuf commit]; return; }
     rpd.stencilAttachment.clearStencil = 0;
     rpd.stencilAttachment.loadAction = MTLLoadActionClear;
     rpd.stencilAttachment.storeAction = MTLStoreActionDontCare;
     
-    id<MTLRenderCommandEncoder> enc = [cmdBuf renderCommandEncoderWithDescriptor:rpd];
+    __block id<MTLRenderCommandEncoder> enc = [cmdBuf renderCommandEncoderWithDescriptor:rpd];
     [enc setRenderPipelineState:_pipelineState];
     [enc setDepthStencilState:_depthState];
     [enc setFrontFacingWinding:MTLWindingCounterClockwise];
@@ -390,7 +470,7 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         u.renderStyle = renderStyle;
         u.terrainOriginZ = terrainOriginZ;
         u.viewportSize = simd_make_float2((float)view.drawableSize.width, (float)view.drawableSize.height);
-        u.outlinePixelWidth = 1.0f;
+        u.outlinePixelWidth = 1.4f;
         u.uniformPadding = 0.0f;
         
         [enc setVertexBytes:&u length:sizeof(u) atIndex:1];
@@ -465,6 +545,39 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     [enc setCullMode:MTLCullModeBack];
     
     // Decorative landmark cubes are disabled for the baseline pass so only streamed grid terrain is visible.
+
+    // ── Speed streaks ──────────────────────────────────────────────
+    if (!self.previewMode && self.showsVehicle && !vehicle.isDestroyed) {
+        [enc setRenderPipelineState:_blendPipelineState];
+        [enc setDepthStencilState:_overlayDepthState];
+        [enc setCullMode:MTLCullModeNone];
+
+        float speedAmount = fminf(fmaxf((simd_length(vehicle.velocity) - 85.0f) / 170.0f, 0.0f), 1.0f);
+        int streakCount = 20 + (int)roundf(speedAmount * 14.0f);
+        float recycleDistance = 220.0f;
+        float flow = fmodf((float)_elapsedTime * (100.0f + simd_length(vehicle.velocity) * 0.85f), recycleDistance);
+        for (int i = 0; i < streakCount; i++) {
+            float seed = (float)i * 12.9898f;
+            float lane = sinf(seed) * 0.5f + 0.5f;
+            float side = cosf(seed * 1.73f) < 0.0f ? -1.0f : 1.0f;
+            float x = visibleVehiclePosition.x + side * (10.0f + lane * 54.0f);
+            float y = visibleVehiclePosition.y + 4.0f + (sinf(seed * 0.61f) * 0.5f + 0.5f) * 22.0f;
+            float z = renderVehiclePosition.z - 190.0f + fmodf(flow + (float)i * 19.0f, recycleDistance);
+            if (z > renderVehiclePosition.z + 24.0f) {
+                continue;
+            }
+
+            float length = 32.0f + speedAmount * 38.0f;
+            float thickness = 0.18f + speedAmount * 0.16f;
+            matrix_float4x4 streakModel = simd_mul(matrix_translation(simd_make_float3(x, y, z)),
+                                                   matrix_scale(simd_make_float3(thickness, thickness, length)));
+            draw(_rockMesh, streakModel, levelType == 1 ? simd_make_float3(1.0f, 0.48f, 0.16f) : simd_make_float3(0.18f, 0.92f, 1.0f), nil, 0, 1, 6);
+        }
+
+        [enc setRenderPipelineState:_pipelineState];
+        [enc setDepthStencilState:_depthState];
+        [enc setCullMode:MTLCullModeBack];
+    }
     
     // ── Obstacles (rocks) ───────────────────────────────────────────
     if (self.showsObstacles) {
@@ -486,6 +599,8 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     }
     
     // ── Vehicle ─────────────────────────────────────────────────────
+    bool renderedVehicle = false;
+    matrix_float4x4 vehicleMaskModel = matrix_translation(simd_make_float3(0.0f, 0.0f, 0.0f));
     if (self.showsVehicle) {
         // Render-only steering attitude: make the hull face into turns without changing physics.
         float yaw = M_PI;
@@ -497,24 +612,19 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         
         matrix_float4x4 vehScale = matrix_scale(simd_make_float3(0.8f, 0.8f, 0.8f));
         matrix_float4x4 vehRotY = matrix_rotation_y(yaw);
-        matrix_float4x4 vehTrans = matrix_translation(visibleVehiclePosition + simd_make_float3(0, 0.5f, 0));
+        matrix_float4x4 vehTrans = matrix_translation(visibleVehiclePosition + simd_make_float3(0, 0.25f, 0));
         matrix_float4x4 vehModel = simd_mul(vehTrans, simd_mul(vehRotY, vehScale));
-        // Draw a monochrome silver ship body and mark its pixels in stencil.
+        // Draw the Chrome material ship body and mark its pixels in stencil.
         simd_float3 vehCol = vehicle.isDestroyed
-            ? simd_make_float3(0.30f, 0.30f, 0.32f)
-            : simd_make_float3(0.78f, 0.80f, 0.83f);
-        [enc setRenderPipelineState:_pipelineState];
+            ? simd_make_float3(0.38f, 0.38f, 0.40f)
+            : simd_make_float3(1.0f, 1.0f, 1.0f);
+        [enc setRenderPipelineState:_shipPipelineState];
         [enc setDepthStencilState:_vehicleBodyStencilDepthState];
         [enc setStencilReferenceValue:1];
         [enc setCullMode:MTLCullModeBack];
-        draw(_vehicleMesh, vehModel, vehCol, nil, 0, 1, 1);
-
-        // Draw a 1-pixel black stencil outline after the body, only outside body pixels.
-        [enc setRenderPipelineState:_pipelineState];
-        [enc setDepthStencilState:_vehicleOutlineStencilDepthState];
-        [enc setStencilReferenceValue:1];
-        [enc setCullMode:MTLCullModeFront];
-        draw(_vehicleMesh, vehModel, simd_make_float3(0.0f, 0.0f, 0.0f), nil, 0, 1, 4);
+        draw(_vehicleMesh, vehModel, vehCol, _chromeRoughnessTexture, 0, 1, 1);
+        renderedVehicle = true;
+        vehicleMaskModel = vehModel;
 
         [enc setStencilReferenceValue:0];
         [enc setRenderPipelineState:_pipelineState];
@@ -523,7 +633,42 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     }
     
     [enc endEncoding];
-    [cmdBuf presentDrawable:view.currentDrawable];
+
+    if (renderedVehicle) {
+        [self ensureShipMaskTextureForView:view];
+
+        MTLRenderPassDescriptor *maskPass = [MTLRenderPassDescriptor renderPassDescriptor];
+        maskPass.colorAttachments[0].texture = _shipMaskTexture;
+        maskPass.colorAttachments[0].loadAction = MTLLoadActionClear;
+        maskPass.colorAttachments[0].storeAction = MTLStoreActionStore;
+        maskPass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
+
+        enc = [cmdBuf renderCommandEncoderWithDescriptor:maskPass];
+        [enc setRenderPipelineState:_shipMaskPipelineState];
+        [enc setCullMode:MTLCullModeBack];
+        draw(_vehicleMesh, vehicleMaskModel, simd_make_float3(1.0f, 1.0f, 1.0f), nil, 0, 1, 1);
+        [enc endEncoding];
+
+        MTLRenderPassDescriptor *outlinePass = [MTLRenderPassDescriptor renderPassDescriptor];
+        outlinePass.colorAttachments[0].texture = drawable.texture;
+        outlinePass.colorAttachments[0].loadAction = MTLLoadActionLoad;
+        outlinePass.colorAttachments[0].storeAction = MTLStoreActionStore;
+
+        Uniforms outlineUniforms;
+        memset(&outlineUniforms, 0, sizeof(outlineUniforms));
+        outlineUniforms.viewportSize = simd_make_float2((float)view.drawableSize.width, (float)view.drawableSize.height);
+        outlineUniforms.outlinePixelWidth = 1.0f;
+
+        enc = [cmdBuf renderCommandEncoderWithDescriptor:outlinePass];
+        [enc setRenderPipelineState:_shipOutlineCompositePipelineState];
+        [enc setFragmentBytes:&outlineUniforms length:sizeof(outlineUniforms) atIndex:1];
+        [enc setFragmentTexture:_shipMaskTexture atIndex:0];
+        [enc setFragmentSamplerState:_maskSamplerState atIndex:0];
+        [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+        [enc endEncoding];
+    }
+
+    [cmdBuf presentDrawable:drawable];
     [cmdBuf commit];
 }
 

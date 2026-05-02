@@ -25,7 +25,7 @@ Vehicle::Vehicle() {
     isGrazing = false;
     
     chaserZ = 50.0f;        // Starts behind the player
-    chaserBaseSpeed = 70.0f; // Matches the run's starting baseline speed
+    chaserBaseSpeed = 99.0f; // Matches the run's starting baseline speed
     
     boostTimer = 0.0f;
     boostMultiplier = 1.0f;

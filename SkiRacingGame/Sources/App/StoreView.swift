@@ -315,6 +315,8 @@ private struct StoreBackButton: View {
 
 struct ShipPreviewView: UIViewRepresentable {
     let shipName: String
+    private static let chromeRoughnessImage = materialTextureImage(named: "Chrome_Parametric_roughness")
+    private static let chromeNormalImage = materialTextureImage(named: "Chrome_Parametric_normal")
 
     func makeUIView(context: Context) -> SCNView {
         let view = SCNView()
@@ -437,15 +439,53 @@ struct ShipPreviewView: UIViewRepresentable {
 
     private func configureMaterials(of geometry: SCNGeometry) {
         for material in geometry.materials {
-            material.lightingModel = .phong
-            material.diffuse.contents = UIColor(red: 0.78, green: 0.80, blue: 0.83, alpha: 1.0)
+            material.lightingModel = .physicallyBased
+            material.diffuse.contents = UIColor.white
+            material.metalness.contents = 1.0
+            if let roughnessImage = Self.chromeRoughnessImage {
+                material.roughness.contents = roughnessImage
+            } else {
+                material.roughness.contents = 0.16
+            }
+            if let normalImage = Self.chromeNormalImage {
+                material.normal.contents = normalImage
+                material.normal.intensity = 0.35
+            }
             material.ambient.contents = UIColor(white: 0.08, alpha: 1.0)
             material.emission.contents = UIColor.black
-            material.specular.contents = UIColor(white: 0.95, alpha: 1.0)
-            material.shininess = 0.86
+            material.specular.contents = UIColor.white
+            material.shininess = 1.0
             material.fresnelExponent = 0.40
             material.multiply.contents = UIColor.white
             material.isDoubleSided = true
         }
+    }
+
+    private static func materialTextureImage(named textureName: String) -> UIImage? {
+        guard let url = materialTextureURL(named: textureName) else { return nil }
+        return UIImage(contentsOfFile: url.path)
+    }
+
+    private static func materialTextureURL(named textureName: String) -> URL? {
+        if let directURL = Bundle.main.url(forResource: textureName, withExtension: "png") {
+            return directURL
+        }
+
+        guard
+            let resourceURL = Bundle.main.resourceURL,
+            let enumerator = FileManager.default.enumerator(
+                at: resourceURL,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )
+        else {
+            return nil
+        }
+
+        let targetFileName = "\(textureName).png"
+        for case let candidate as URL in enumerator where candidate.lastPathComponent == targetFileName {
+            return candidate
+        }
+        return nil
     }
 }

@@ -10,14 +10,12 @@ struct VertexIn {
 struct VertexOut {
     float4 position [[position]];
     float3 worldNormal;
-    float3 terrainTopNormal;
     float3 worldPosition;
     float3 localPosition;
     float2 texCoord;
     float2 cellCenterXZ;
     uint cellFlags; // reserved; active baseline keeps every terrain cell opaque
     float collisionTimer;
-    uint edgeExposure; // reserved for future explicit edge mesh/line pass
 };
 
 struct Uniforms {
@@ -215,15 +213,6 @@ float terrainHeight(float2 xz, float slopeAngle) {
     return floor(finalHeight * 0.5) * 2.0;
 }
 
-float3 terrainTopNormalAtCell(float2 centerXZ, float slopeAngle) {
-    float sampleStep = 5.0;
-    float hL = terrainHeight(centerXZ + float2(-sampleStep, 0.0), slopeAngle);
-    float hR = terrainHeight(centerXZ + float2(sampleStep, 0.0), slopeAngle);
-    float hD = terrainHeight(centerXZ + float2(0.0, -sampleStep), slopeAngle);
-    float hU = terrainHeight(centerXZ + float2(0.0, sampleStep), slopeAngle);
-    return normalize(float3(hL - hR, sampleStep * 2.0, hD - hU));
-}
-
 // ── Vertex ─────────────────────────────────────────────────────────
 vertex VertexOut vertex_main(VertexIn in [[stage_in]],
                              constant Uniforms &uniforms [[buffer(1)]],
@@ -249,20 +238,6 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]],
         out.cellFlags = cell.flags & 0u;
         out.collisionTimer = cell.collisionTimer;
         out.cellCenterXZ = float2(worldCenterX, worldCenterZ);
-        out.terrainTopNormal = terrainTopNormalAtCell(out.cellCenterXZ, uniforms.slopeAngle);
-        
-        // Pre-compute neighbor heights for edge exposure (moved from fragment shader)
-        float colSpacingV = 5.0;
-        float hPosX_v = terrainHeight(float2(worldCenterX + colSpacingV, worldCenterZ), uniforms.slopeAngle);
-        float hNegX_v = terrainHeight(float2(worldCenterX - colSpacingV, worldCenterZ), uniforms.slopeAngle);
-        float hPosZ_v = terrainHeight(float2(worldCenterX, worldCenterZ + colSpacingV), uniforms.slopeAngle);
-        float hNegZ_v = terrainHeight(float2(worldCenterX, worldCenterZ - colSpacingV), uniforms.slopeAngle);
-        uint exposure = 0;
-        if (hPosX_v + 0.75 < h) exposure |= 1u;
-        if (hNegX_v + 0.75 < h) exposure |= 2u;
-        if (hPosZ_v + 0.75 < h) exposure |= 4u;
-        if (hNegZ_v + 0.75 < h) exposure |= 8u;
-        out.edgeExposure = exposure;
         
         float4 worldPos;
         float tileSize = colSpacing * 1.012;
@@ -292,9 +267,7 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]],
     } else {
         out.cellFlags = 0;
         out.cellCenterXZ = float2(0.0);
-        out.terrainTopNormal = float3(0.0, 1.0, 0.0);
         out.collisionTimer = 0.0;
-        out.edgeExposure = 0;
         float4 worldPos = uniforms.modelMatrix * float4(in.position, 1.0);
         float3 worldNormal = normalize((uniforms.modelMatrix * float4(in.normal, 0.0)).xyz);
         float4 clipPos = uniforms.viewProjectionMatrix * worldPos;

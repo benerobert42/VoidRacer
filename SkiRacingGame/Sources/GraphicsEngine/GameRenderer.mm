@@ -290,8 +290,9 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
 
 - (void)drawInMTKView:(MTKView *)view {
     NSTimeInterval currentTime = CACurrentMediaTime();
-    if (_lastPresentTime == 0.0) _lastPresentTime = currentTime;
-    _elapsedTime += (currentTime - _lastPresentTime);
+    NSTimeInterval frameDelta = (_lastPresentTime == 0.0) ? (1.0 / 60.0) : (currentTime - _lastPresentTime);
+    frameDelta = fmin(fmax(frameDelta, 0.0), 1.0 / 30.0);
+    _elapsedTime += frameDelta;
     _lastPresentTime = currentTime;
 
     id<MTLCommandBuffer> cmdBuf = [_commandQueue commandBuffer];
@@ -306,6 +307,10 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     [enc setDepthStencilState:_depthState];
     [enc setFrontFacingWinding:MTLWindingCounterClockwise];
     [enc setCullMode:MTLCullModeBack];
+
+    if (!self.previewMode) {
+        _engine->update((float)frameDelta);
+    }
     
     const Vehicle& vehicle = _engine->getVehicle();
     const Track& track = _engine->getTrack();
@@ -322,8 +327,8 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     simd_float3 desiredCamPos;
     simd_float3 desiredCamTarget;
     if (self.previewMode) {
-        desiredCamPos = renderVehiclePosition + simd_make_float3(0.0f, 148.0f, 86.0f);
-        desiredCamTarget = renderVehiclePosition + simd_make_float3(0.0f, -52.0f, -38.0f);
+        desiredCamPos = renderVehiclePosition + simd_make_float3(0.0f, 96.0f, 58.0f);
+        desiredCamTarget = renderVehiclePosition;
     } else {
         // Race the Sun style: camera stays locked to the ship so it remains centered on screen.
         desiredCamPos = visibleVehiclePosition + simd_make_float3(0.0f, 96.0f, 58.0f);

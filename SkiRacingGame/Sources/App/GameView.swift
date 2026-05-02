@@ -134,8 +134,10 @@ struct GameView: View {
     @State private var deathSequenceStarted = false
     @State private var controlsEnabled = false
     @State private var entryProgress: Double = 1.0
+    @State private var isDragging = false
+    @State private var activeDragTranslationWidth: CGFloat = 0
     
-    let timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common).autoconnect()
+    let hudTimer = Timer.publish(every: 1.0 / 15.0, on: .main, in: .common).autoconnect()
     
     private var shipDropOffset: Float {
         let remaining = max(0.0, 1.0 - entryProgress)
@@ -178,17 +180,17 @@ struct GameView: View {
                 
                 Color.clear
                     .contentShape(Rectangle())
-                    .allowsHitTesting(controlsEnabled)
                     .gesture(
                         DragGesture(minimumDistance: 1)
                             .onChanged { value in
-                                let dx = Float(value.translation.width)
-                                let sensitivity: Float = 0.015
-                                let clamped = max(-1.0, min(1.0, dx * sensitivity))
-                                steeringValue = clamped
-                                appState.engine.setSteering(steeringValue)
+                                activeDragTranslationWidth = value.translation.width
+                                isDragging = true
+                                guard controlsEnabled else { return }
+                                updateSteering(forDragWidth: value.translation.width)
                             }
                             .onEnded { _ in
+                                isDragging = false
+                                activeDragTranslationWidth = 0
                                 steeringValue = 0
                                 appState.engine.setSteering(0)
                             }
@@ -197,6 +199,7 @@ struct GameView: View {
                 
                 if !controlsEnabled {
                     entryOverlay
+                        .allowsHitTesting(false)
                 }
                 
                 hudLayer(topInset: proxy.safeAreaInsets.top)
@@ -205,13 +208,17 @@ struct GameView: View {
         .onAppear {
             beginRunPresentation()
         }
-        .onReceive(timer) { _ in
-            appState.engine.update(withDeltaTime: 1.0 / 60.0)
+        .onChange(of: controlsEnabled) { enabled in
+            if enabled && isDragging {
+                updateSteering(forDragWidth: activeDragTranslationWidth)
+            }
+        }
+        .onReceive(hudTimer) { _ in
             score = Int(appState.engine.getScore())
             runCoins = Int(appState.engine.getCoins())
             health = Int(appState.engine.getVehicleHealth())
             let nowGrazing = appState.engine.getIsGrazing()
-            timeElapsed += 1.0 / 60.0
+            timeElapsed = TimeInterval(appState.engine.getTotalTime())
             
             if wasGrazing && !nowGrazing {
                 nearMissCount += 1
@@ -398,19 +405,19 @@ struct GameView: View {
         deathSequenceStarted = false
         hudVisible = false
         controlsEnabled = false
+        isDragging = false
+        activeDragTranslationWidth = 0
         appState.engine.setSteering(0)
         
         let shouldAnimateEntry = appState.consumePendingGameEntryAnimation()
         if shouldAnimateEntry {
             entryProgress = 0
+            controlsEnabled = true
             withAnimation(.easeOut(duration: 0.9)) {
                 entryProgress = 1
             }
             withAnimation(.easeIn(duration: 0.35).delay(0.20)) {
                 hudVisible = true
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                controlsEnabled = true
             }
         } else {
             entryProgress = 1
@@ -441,6 +448,14 @@ struct GameView: View {
             nearMisses: nearMissCount,
             died: died
         )
+    }
+
+    private func updateSteering(forDragWidth width: CGFloat) {
+        let dx = Float(width)
+        let sensitivity: Float = 0.015
+        let clamped = max(-1.0, min(1.0, dx * sensitivity))
+        steeringValue = clamped
+        appState.engine.setSteering(clamped)
     }
 }
 

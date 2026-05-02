@@ -20,6 +20,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (int)getCoins;
 - (int)getLevelType;
 - (int)getScore;
+- (float)getTotalTime;
 - (float)getOverdriveCharge;
 - (bool)getIsGrazing;
 - (float)getChaserDistance;

@@ -47,12 +47,10 @@ void PhysicsWorld::syncVisibleGridState(Track& track, float renderOriginZ) {
     const float visibleMinZ = renderOriginZ - TerrainGrid::LENGTH * colSpacing;
     
     for (int row = 0; row < TerrainGrid::LENGTH; row++) {
-        float worldZ = renderOriginZ - row * colSpacing;
         for (int col = 0; col < TerrainGrid::WIDTH; col++) {
-            float worldX = (col - TerrainGrid::WIDTH / 2.0f) * colSpacing;
             GridCell& cell = track.grid.cells[row * TerrainGrid::WIDTH + col];
             cell.flags = 0;
-            cell.baseHeight = MathUtils::getTerrainHeight(worldX, worldZ, track.slopeAngle);
+            cell.baseHeight = 0.0f;
             cell.collisionEffectTimer = 0.0f;
         }
     }

@@ -78,6 +78,10 @@
     return _engine->getVehicle().score;
 }
 
+- (float)getTotalTime {
+    return _engine->getTotalTime();
+}
+
 - (float)getOverdriveCharge {
     return _engine->getVehicle().overdriveCharge;
 }

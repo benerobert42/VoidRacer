@@ -24,7 +24,7 @@ struct Uniforms {
     float terrainOriginZ;
     simd_float2 viewportSize;
     float outlinePixelWidth;
-    float uniformPadding;
+    float boostTimer;
 };
 
 // Must match GridCellGPU in Shaders.metal
@@ -471,7 +471,7 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         u.terrainOriginZ = terrainOriginZ;
         u.viewportSize = simd_make_float2((float)view.drawableSize.width, (float)view.drawableSize.height);
         u.outlinePixelWidth = 1.4f;
-        u.uniformPadding = 0.0f;
+        u.boostTimer = vehicle.boostTimer;
         
         [enc setVertexBytes:&u length:sizeof(u) atIndex:1];
         [enc setFragmentBytes:&u length:sizeof(u) atIndex:1];
@@ -522,6 +522,8 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     // Set grid state buffer at index 2 for the vertex shader
     [enc setVertexBuffer:_gridStateBuffer offset:0 atIndex:2];
     // Single solid terrain pass: every cell is one opaque neon column.
+    [enc setRenderPipelineState:_pipelineState];
+    [enc setDepthStencilState:_depthState];
     [enc setCullMode:MTLCullModeBack];
     draw(_rockMesh, identity, simd_make_float3(1,1,1), nil, 1, TerrainGrid::WIDTH * TerrainGrid::LENGTH, 0);
 

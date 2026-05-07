@@ -2,6 +2,11 @@ import SwiftUI
 import SceneKit
 import UIKit
 
+private enum StorePalette {
+    static let neonCyan = Color(red: 0.12, green: 0.88, blue: 1.0)
+    static let neonBlue = Color(red: 0.02, green: 0.42, blue: 0.92)
+}
+
 struct StoreView: View {
     @EnvironmentObject var appState: AppState
     @State private var selectedShip = ShipID.executioner
@@ -38,16 +43,85 @@ struct StoreView: View {
     }
 
     private var storeBackground: some View {
-        LinearGradient(
-            colors: [
-                Color(red: 0.015, green: 0.015, blue: 0.026),
-                Color(red: 0.045, green: 0.047, blue: 0.075),
-                Color(red: 0.085, green: 0.055, blue: 0.100)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        StoreSpaceBackdrop()
+    }
+}
+
+private struct StoreSpaceBackdrop: View {
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.003, green: 0.005, blue: 0.014),
+                    Color(red: 0.010, green: 0.018, blue: 0.040),
+                    Color(red: 0.026, green: 0.018, blue: 0.040),
+                    Color(red: 0.002, green: 0.004, blue: 0.012)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            RadialGradient(
+                colors: [
+                    StorePalette.neonBlue.opacity(0.18),
+                    StorePalette.neonCyan.opacity(0.05),
+                    .clear
+                ],
+                center: UnitPoint(x: 0.18, y: 0.26),
+                startRadius: 10,
+                endRadius: 360
+            )
+
+            RadialGradient(
+                colors: [
+                    Color(red: 0.75, green: 0.28, blue: 1.0).opacity(0.10),
+                    .clear
+                ],
+                center: UnitPoint(x: 0.82, y: 0.72),
+                startRadius: 20,
+                endRadius: 420
+            )
+
+            StoreStarfield()
+                .opacity(0.86)
+        }
         .ignoresSafeArea()
+    }
+}
+
+private struct StoreStarfield: View {
+    var body: some View {
+        Canvas { context, size in
+            for index in 0..<130 {
+                let seed = CGFloat(index)
+                let x = starHash(seed * 12.9898 + 4.0) * size.width
+                let y = starHash(seed * 78.233 + 9.0) * size.height
+                let brightness = 0.28 + starHash(seed * 39.425 + 2.0) * 0.62
+                let radius = 0.55 + starHash(seed * 91.717 + 6.0) * 1.35
+                let rect = CGRect(x: x, y: y, width: radius, height: radius)
+                context.fill(
+                    Path(ellipseIn: rect),
+                    with: .color(Color.white.opacity(brightness))
+                )
+            }
+
+            for index in 0..<22 {
+                let seed = CGFloat(index)
+                let x = starHash(seed * 20.113 + 3.0) * size.width
+                let y = starHash(seed * 51.371 + 7.0) * size.height
+                let length = 10 + starHash(seed * 13.579 + 8.0) * 24
+                var path = Path()
+                path.move(to: CGPoint(x: x - length * 0.5, y: y))
+                path.addLine(to: CGPoint(x: x + length * 0.5, y: y))
+                context.stroke(path, with: .color(StorePalette.neonCyan.opacity(0.18)), lineWidth: 0.55)
+            }
+        }
+        .blur(radius: 0.15)
+    }
+
+    private func starHash(_ value: CGFloat) -> CGFloat {
+        let raw = sin(value) * 43_758.5453
+        return raw - floor(raw)
     }
 }
 
@@ -66,7 +140,7 @@ private struct ShipStorePage: View {
     }
 
     private var accentColor: Color {
-        ship.accentGradient.first ?? .white
+        StorePalette.neonCyan
     }
 
     var body: some View {
@@ -75,7 +149,16 @@ private struct ShipStorePage: View {
 
             titleBlock
 
-            ShipPreviewView(shipName: ship.rawValue)
+            ZStack(alignment: .bottom) {
+                StoreShipProjectionGrid(accentColor: accentColor)
+                    .frame(height: previewHeight * 0.42)
+                    .padding(.horizontal, 6)
+                    .offset(y: -previewHeight * 0.06)
+
+                ShipPreviewView(shipName: ship.rawValue)
+                    .padding(.horizontal, -30)
+                    .padding(.vertical, -10)
+            }
             .frame(maxWidth: .infinity)
             .frame(height: previewHeight)
             .contentShape(Rectangle())
@@ -105,7 +188,7 @@ private struct ShipStorePage: View {
         let safeHeight = geometry.size.height
             - StoreSafeArea.topInset(for: geometry)
             - StoreSafeArea.bottomInset(for: geometry)
-        return min(max(safeHeight * 0.48, 300), 500)
+        return min(max(safeHeight * 0.52, 340), 540)
     }
 
     private var titleBlock: some View {
@@ -205,8 +288,8 @@ private struct ShipStorePage: View {
             return [Color.white.opacity(0.10), Color.white.opacity(0.07)]
         }
         return [
-            Color(red: 0.12, green: 0.88, blue: 1.0),
-            Color(red: 0.02, green: 0.42, blue: 0.92)
+            StorePalette.neonCyan,
+            StorePalette.neonBlue
         ]
     }
 
@@ -267,6 +350,152 @@ private struct StorePageIndicator: View {
             }
         }
         .padding(.top, 2)
+    }
+}
+
+private struct StoreShipProjectionGrid: View {
+    let accentColor: Color
+
+    var body: some View {
+        Canvas { context, size in
+            let horizonY = size.height * 0.18
+            let bottomY = size.height * 0.96
+            let centerX = size.width * 0.5
+            let rowCount = 10
+            let columnCount = 30
+            let fillColor = StorePalette.neonCyan.opacity(0.026)
+            let weakLine = StorePalette.neonCyan.opacity(0.42)
+            let strongLine = StorePalette.neonCyan.opacity(0.82)
+
+            let rowT: (Int) -> CGFloat = { row in
+                CGFloat(row) / CGFloat(rowCount)
+            }
+            let rowY: (Int) -> CGFloat = { row in
+                let t = rowT(row)
+                return horizonY + pow(t, 1.85) * (bottomY - horizonY)
+            }
+            let projectedX: (Int, CGFloat) -> CGFloat = { column, t in
+                let colT = CGFloat(column) / CGFloat(columnCount)
+                let bottomX = (colT * 3.0 - 1.0) * size.width
+                let topX = centerX + (bottomX - centerX) * 0.34
+                return topX + (bottomX - topX) * t
+            }
+
+            for row in 0..<rowCount {
+                let nearT = rowT(row)
+                let farT = rowT(row + 1)
+                let farY = rowY(row)
+                let nearY = rowY(row + 1)
+
+                for column in 0..<columnCount {
+                    var cell = Path()
+                    cell.move(to: CGPoint(x: projectedX(column, farT), y: farY))
+                    cell.addLine(to: CGPoint(x: projectedX(column + 1, farT), y: farY))
+                    cell.addLine(to: CGPoint(x: projectedX(column + 1, nearT), y: nearY))
+                    cell.addLine(to: CGPoint(x: projectedX(column, nearT), y: nearY))
+                    cell.closeSubpath()
+                    context.fill(cell, with: .color(fillColor))
+                }
+            }
+
+            for index in 0...rowCount {
+                let y = rowY(index)
+                var path = Path()
+                path.move(to: CGPoint(x: 0, y: y))
+                path.addLine(to: CGPoint(x: size.width, y: y))
+                context.stroke(path, with: .color(index % 3 == 0 ? strongLine : weakLine), lineWidth: index % 3 == 0 ? 1.05 : 0.62)
+            }
+
+            for index in 0...columnCount {
+                var path = Path()
+                path.move(to: CGPoint(x: projectedX(index, 0.0), y: horizonY))
+                path.addLine(to: CGPoint(x: projectedX(index, 1.0), y: bottomY))
+                context.stroke(path, with: .color(index % 3 == 0 ? strongLine : weakLine), lineWidth: index % 3 == 0 ? 1.0 : 0.58)
+            }
+
+            var centerPath = Path()
+            centerPath.move(to: CGPoint(x: centerX, y: horizonY))
+            centerPath.addLine(to: CGPoint(x: centerX, y: bottomY))
+            context.stroke(centerPath, with: .color(StorePalette.neonCyan.opacity(0.72)), lineWidth: 1.2)
+        }
+        .shadow(color: StorePalette.neonCyan.opacity(0.36), radius: 9)
+        .blur(radius: 0.08)
+        .mask(
+            LinearGradient(
+                colors: [.clear, .white.opacity(0.72), .white.opacity(0.88), .clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .allowsHitTesting(false)
+    }
+}
+
+private struct StoreHangarBackdrop: View {
+    let accentColor: Color
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.006, green: 0.008, blue: 0.018),
+                        Color(red: 0.018, green: 0.026, blue: 0.050),
+                        Color(red: 0.030, green: 0.020, blue: 0.044)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                StoreFloorGrid(accentColor: accentColor)
+                    .opacity(0.82)
+                    .frame(height: proxy.size.height * 0.58)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+private struct StoreFloorGrid: View {
+    let accentColor: Color
+
+    var body: some View {
+        Canvas { context, size in
+            let horizonY = size.height * 0.08
+            let bottomY = size.height
+            let centerX = size.width * 0.5
+            let lineColor = accentColor.opacity(0.42)
+            let strongLineColor = StorePalette.neonCyan.opacity(0.62)
+
+            for index in 0...14 {
+                let t = CGFloat(index) / 14.0
+                let y = horizonY + pow(t, 1.85) * (bottomY - horizonY)
+                var path = Path()
+                path.move(to: CGPoint(x: 0, y: y))
+                path.addLine(to: CGPoint(x: size.width, y: y))
+                context.stroke(path, with: .color(index % 4 == 0 ? strongLineColor : lineColor), lineWidth: index % 4 == 0 ? 1.25 : 0.75)
+            }
+
+            for index in 0...24 {
+                let t = CGFloat(index) / 24.0
+                let bottomX = (t * 1.50 - 0.25) * size.width
+                let topX = centerX + (bottomX - centerX) * 0.55
+                var path = Path()
+                path.move(to: CGPoint(x: topX, y: horizonY))
+                path.addLine(to: CGPoint(x: bottomX, y: bottomY))
+                context.stroke(path, with: .color(index % 4 == 0 ? strongLineColor : lineColor), lineWidth: index % 4 == 0 ? 1.35 : 0.75)
+            }
+        }
+        .shadow(color: StorePalette.neonCyan.opacity(0.36), radius: 7)
+        .blur(radius: 0.08)
+        .mask(
+            LinearGradient(
+                colors: [.clear, .white.opacity(0.92), .white],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
     }
 }
 
@@ -339,12 +568,13 @@ struct ShipPreviewView: UIViewRepresentable {
 
         let cameraNode = SCNNode()
         cameraNode.camera = SCNCamera()
-        cameraNode.camera?.fieldOfView = 33
-        cameraNode.camera?.wantsHDR = true
+        cameraNode.camera?.fieldOfView = 39
+        cameraNode.camera?.wantsHDR = false
         cameraNode.camera?.wantsExposureAdaptation = false
         cameraNode.camera?.zNear = 0.1
         cameraNode.camera?.zFar = 100.0
-        cameraNode.position = SCNVector3(0, 0.8, 7.0)
+        cameraNode.position = SCNVector3(0, 3.4, 7.8)
+        cameraNode.look(at: SCNVector3(0, 0.55, 0))
         scene.rootNode.addChildNode(cameraNode)
 
         let keyLight = SCNNode()
@@ -378,15 +608,6 @@ struct ShipPreviewView: UIViewRepresentable {
         ambient.light?.color = UIColor(white: 0.30, alpha: 1.0)
         scene.rootNode.addChildNode(ambient)
 
-        let floorGlow = SCNNode(geometry: SCNPlane(width: 10, height: 10))
-        floorGlow.geometry?.firstMaterial?.diffuse.contents = UIColor(white: 0.10, alpha: 0.18)
-        floorGlow.geometry?.firstMaterial?.emission.contents = UIColor(red: 0.08, green: 0.22, blue: 0.28, alpha: 0.10)
-        floorGlow.geometry?.firstMaterial?.isDoubleSided = true
-        floorGlow.geometry?.firstMaterial?.lightingModel = .lambert
-        floorGlow.eulerAngles.x = -.pi / 2
-        floorGlow.position = SCNVector3(0, -1.18, 0)
-        scene.rootNode.addChildNode(floorGlow)
-
         if let shipNode = loadShipNode() {
             scene.rootNode.addChildNode(shipNode)
         }
@@ -415,13 +636,14 @@ struct ShipPreviewView: UIViewRepresentable {
         let sizeY = maxVec.y - minVec.y
         let sizeZ = maxVec.z - minVec.z
         let maxDimension = max(sizeX, max(sizeY, sizeZ))
-        let scale = maxDimension > 0 ? 2.9 / maxDimension : 1.0
+        let scale = maxDimension > 0 ? 2.42 / maxDimension : 1.0
         container.scale = SCNVector3(scale, scale, scale)
 
         let centerX = (minVec.x + maxVec.x) * 0.5
         let centerY = (minVec.y + maxVec.y) * 0.5
         let centerZ = (minVec.z + maxVec.z) * 0.5
-        container.position = SCNVector3(-centerX * scale, -centerY * scale, -centerZ * scale)
+        let hoverLift: Float = 0.68
+        container.position = SCNVector3(-centerX * scale, -centerY * scale + hoverLift, -centerZ * scale)
         container.runAction(.repeatForever(.rotateBy(x: 0, y: CGFloat.pi * 2, z: 0, duration: 18)))
         return container
     }

@@ -10,8 +10,14 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) BOOL showsVehicle;
 @property (nonatomic) BOOL showsObstacles;
 @property (nonatomic) BOOL showsChaser;
+@property (nonatomic) BOOL storeGridPalette;
 @property (nonatomic) float previewScrollSpeed;
 @property (nonatomic) float vehicleVerticalOffset;
+@property (nonatomic) float visualModifierIntensity;
+@property (nonatomic) float visualEdgeGlowBoost;
+@property (nonatomic) float visualPathGlowBoost;
+@property (nonatomic) float visualParticleBoost;
+@property (nonatomic) NSInteger visualMoodStyle;
 
 - (instancetype)initWithMetalKitView:(MTKView *)mtkView engineWrapper:(GameEngineWrapper *)engineWrapper;
 

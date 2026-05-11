@@ -43,7 +43,24 @@ struct StoreView: View {
     }
 
     private var storeBackground: some View {
-        StoreSpaceBackdrop()
+        TerrainPreviewView(
+            level: appState.selectedLevel,
+            scrollSpeed: 12,
+            preferredFramesPerSecond: 30,
+            storeGridPalette: true
+        )
+        .overlay(
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.12),
+                    Color.black.opacity(0.02),
+                    Color.black.opacity(0.34)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .ignoresSafeArea()
     }
 }
 
@@ -149,16 +166,9 @@ private struct ShipStorePage: View {
 
             titleBlock
 
-            ZStack(alignment: .bottom) {
-                StoreShipProjectionGrid(accentColor: accentColor)
-                    .frame(height: previewHeight * 0.42)
-                    .padding(.horizontal, 6)
-                    .offset(y: -previewHeight * 0.06)
-
-                ShipPreviewView(shipName: ship.rawValue)
-                    .padding(.horizontal, -30)
-                    .padding(.vertical, -10)
-            }
+            ShipPreviewView(shipName: ship.rawValue)
+                .padding(.horizontal, -42)
+                .padding(.vertical, -18)
             .frame(maxWidth: .infinity)
             .frame(height: previewHeight)
             .contentShape(Rectangle())
@@ -188,7 +198,7 @@ private struct ShipStorePage: View {
         let safeHeight = geometry.size.height
             - StoreSafeArea.topInset(for: geometry)
             - StoreSafeArea.bottomInset(for: geometry)
-        return min(max(safeHeight * 0.52, 340), 540)
+        return min(max(safeHeight * 0.62, 420), 620)
     }
 
     private var titleBlock: some View {
@@ -568,13 +578,17 @@ struct ShipPreviewView: UIViewRepresentable {
 
         let cameraNode = SCNNode()
         cameraNode.camera = SCNCamera()
-        cameraNode.camera?.fieldOfView = 39
+        cameraNode.camera?.fieldOfView = 34
         cameraNode.camera?.wantsHDR = false
         cameraNode.camera?.wantsExposureAdaptation = false
         cameraNode.camera?.zNear = 0.1
         cameraNode.camera?.zFar = 100.0
-        cameraNode.position = SCNVector3(0, 3.4, 7.8)
-        cameraNode.look(at: SCNVector3(0, 0.55, 0))
+        cameraNode.position = SCNVector3(0, 8.68, 0)
+        cameraNode.look(
+            at: SCNVector3(0, 0.55, 0),
+            up: SCNVector3(0, 0, -1),
+            localFront: SCNVector3(0, 0, -1)
+        )
         scene.rootNode.addChildNode(cameraNode)
 
         let keyLight = SCNNode()
@@ -636,7 +650,7 @@ struct ShipPreviewView: UIViewRepresentable {
         let sizeY = maxVec.y - minVec.y
         let sizeZ = maxVec.z - minVec.z
         let maxDimension = max(sizeX, max(sizeY, sizeZ))
-        let scale = maxDimension > 0 ? 2.42 / maxDimension : 1.0
+        let scale = maxDimension > 0 ? 2.95 / maxDimension : 1.0
         container.scale = SCNVector3(scale, scale, scale)
 
         let centerX = (minVec.x + maxVec.x) * 0.5
@@ -644,7 +658,8 @@ struct ShipPreviewView: UIViewRepresentable {
         let centerZ = (minVec.z + maxVec.z) * 0.5
         let hoverLift: Float = 0.68
         container.position = SCNVector3(-centerX * scale, -centerY * scale + hoverLift, -centerZ * scale)
-        container.runAction(.repeatForever(.rotateBy(x: 0, y: CGFloat.pi * 2, z: 0, duration: 18)))
+        container.eulerAngles = SCNVector3(0, Float.pi, 0)
+        container.runAction(.repeatForever(.rotateBy(x: 0, y: 0, z: CGFloat.pi * 2, duration: 18)))
         return container
     }
 

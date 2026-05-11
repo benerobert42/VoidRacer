@@ -79,6 +79,12 @@ struct GameOverView: View {
                             accent: Color(red: 1.0, green: 0.36, blue: 0.62)
                         )
                     }
+
+                    resultCard(
+                        title: "NEXT RUN VISUAL MODE",
+                        value: appState.activeRunVisualModifier.mood.name,
+                        accent: Color(red: 0.18, green: 0.86, blue: 1.0)
+                    )
                 }
                 
                 if !appState.lastRunCompletedMissions.isEmpty {

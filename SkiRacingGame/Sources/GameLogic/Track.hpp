@@ -10,6 +10,12 @@ struct Obstacle {
     bool hasCollided;
 };
 
+struct SkillCollectible {
+    simd_float3 position;
+    float radius;
+    bool collected;
+};
+
 // Reserved grid-cell flags. The current baseline terrain renderer keeps all cells opaque.
 enum class CellFlags : uint16_t {
     None          = 0,
@@ -49,6 +55,7 @@ struct TerrainGrid {
 class Track {
 public:
     std::vector<Obstacle> obstacles;
+    std::vector<SkillCollectible> skillCollectibles;
     TerrainGrid grid;
     float finishLineZ;
     float slopeAngle; // in radians

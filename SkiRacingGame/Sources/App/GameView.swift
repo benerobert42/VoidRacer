@@ -34,8 +34,10 @@ struct GameMetalView: UIViewRepresentable {
     var showVehicle: Bool = true
     var showObstacles: Bool = true
     var showChaser: Bool = true
+    var storeGridPalette: Bool = false
     var shipVerticalOffset: Float = 0
     var preferredFramesPerSecond: Int = 60
+    var visualModifier: RunVisualModifier = .baseline
     
     final class Coordinator {
         var renderer: GameRenderer?
@@ -72,7 +74,13 @@ struct GameMetalView: UIViewRepresentable {
         renderer.showsVehicle = showVehicle
         renderer.showsObstacles = showObstacles
         renderer.showsChaser = showChaser
+        renderer.storeGridPalette = storeGridPalette
         renderer.vehicleVerticalOffset = shipVerticalOffset
+        renderer.visualModifierIntensity = visualModifier.intensity
+        renderer.visualEdgeGlowBoost = visualModifier.edgeGlowBoost
+        renderer.visualPathGlowBoost = visualModifier.pathGlowBoost
+        renderer.visualParticleBoost = visualModifier.particleBoost
+        renderer.visualMoodStyle = visualModifier.mood.rawValue
         
         if previewLevel == nil {
             applyVisibleLateralLimit(for: view)
@@ -89,6 +97,7 @@ struct TerrainPreviewView: View {
     let level: GameLevel
     var scrollSpeed: Float = 34
     var preferredFramesPerSecond: Int = 30
+    var storeGridPalette: Bool = false
     
     @State private var previewEngineWrapper = GameEngineWrapper()
     
@@ -100,6 +109,7 @@ struct TerrainPreviewView: View {
             showVehicle: false,
             showObstacles: false,
             showChaser: false,
+            storeGridPalette: storeGridPalette,
             preferredFramesPerSecond: preferredFramesPerSecond
         )
         .ignoresSafeArea()
@@ -174,7 +184,8 @@ struct GameView: View {
                     showObstacles: true,
                     showChaser: true,
                     shipVerticalOffset: shipDropOffset,
-                    preferredFramesPerSecond: 60
+                    preferredFramesPerSecond: 60,
+                    visualModifier: appState.activeRunVisualModifier
                 )
                 .ignoresSafeArea()
                 

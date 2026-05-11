@@ -189,9 +189,24 @@ Current baseline:
 
 - no boost pads
 - no elevation pads
-- no flatten pads
+- no passive flatten pads outside the active skill collectible prototype
 - no destructible or transparent terrain columns
 - power-up timers are force-reset each frame so no stale effects can survive between terrain revisions
+
+### Skill Collectible Prototype
+
+The first ship-skill pickup is now prototyped as a glowing red cube hovering near ship height.
+
+Current behavior:
+
+- red skill cubes spawn periodically on the river centerline ahead of the ship
+- skill cubes are intentionally compact, render with an emissive red core plus a black silhouette shell, and visually oscillate vertically
+- the visual oscillation has a large amplitude for readability, but collection uses stable X/Z placement so the bob phase cannot make the player miss it
+- collecting one triggers a timed forward flatten charge
+- the flatten charge marks a 5-column-wide by up-to-40-row-long fixed-world area directly ahead of the ship
+- flattened cells remain active for 3 seconds, are lowered in the terrain shader, and are ignored by terrain collision
+- flattened records are also pruned once their world-space cells scroll out of the active terrain window
+- this is intentionally implemented as transient cell flags, not permanent terrain mutation
 
 ### Terrain Readability
 
@@ -203,6 +218,19 @@ Current behavior:
 - decorative landmark cubes are disabled for the baseline so there are no extra grid-like columns moving with the ship
 - the ship has a stencil-masked 1-pixel black outline to keep it readable without glow
 - ship material shading is opt-in through the vehicle render style, so non-ship scenery cannot inherit ship coloration
+
+### Adaptive Visual Mood Layer
+
+The game now keeps level identity separate from per-run mood.
+
+Current behavior:
+
+- each level keeps its authored base palette, geometry profile, and terrain identity
+- after a run ends, `AppState` selects a constrained next-run mood from local telemetry
+- current moods are `BASELINE`, `RECOVERY`, `FLOW`, and `OVERDRIVE`
+- the modifier adjusts existing visual knobs only: path glow, visible terrain edge color/thickness, riverbed floor tint, and speed streak density/brightness
+- the modifier never changes controls, scoring, collision, terrain generation, or difficulty
+- this deterministic selector is the safe fallback path for a future Apple Intelligence visual director
 
 ## Current Death Flow
 

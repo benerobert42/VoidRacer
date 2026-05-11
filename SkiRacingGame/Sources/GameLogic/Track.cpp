@@ -11,6 +11,7 @@ Track::Track() {
 
 void Track::generateTrack() {
     obstacles.clear();
+    skillCollectibles.clear();
     finishLineZ = -2000.0f;
     
     // Initialize the terrain grid cells

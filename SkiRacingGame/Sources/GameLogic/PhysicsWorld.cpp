@@ -18,12 +18,19 @@ constexpr float kBoostIntervalMeanSeconds = 30.0f;
 constexpr float kBoostIntervalStdDevSeconds = 10.0f;
 constexpr float kBoostPadSpawnLeadTime = 1.55f;
 constexpr float kFirstBoostSpawnTime = 4.0f;
+constexpr float kSkillCollectibleIntervalSeconds = 16.0f;
+constexpr float kSkillCollectibleLeadTime = 1.55f;
+constexpr float kFirstSkillCollectibleSpawnTime = 6.0f;
+constexpr float kSkillCollectibleRadius = 5.2f;
+constexpr float kFlattenDurationSeconds = 3.0f;
 constexpr int kCollisionBaseDamage = 6;
 constexpr int kCollisionBonusDamagePerExtraCell = 2;
 constexpr int kMaxCollisionDamage = 12;
 constexpr int kDebugLevel = 3;
 constexpr int kBoostPadRows = 5;
 constexpr int kBoostPadCols = 3;
+constexpr int kFlattenRows = 40;
+constexpr int kFlattenHalfCols = 2;
 
 static int worldToGridCoord(float worldValue) {
     return (int)floorf((worldValue + TerrainGrid::COLUMN_SPACING * 0.5f) / TerrainGrid::COLUMN_SPACING);
@@ -57,6 +64,7 @@ PhysicsWorld::PhysicsWorld() {
     gravity = simd_make_float3(0.0f, -9.81f, 0.0f);
     boostRandomState = 0xA341316Cu;
     nextBoostSpawnTime = kFirstBoostSpawnTime;
+    nextSkillCollectibleSpawnTime = kFirstSkillCollectibleSpawnTime;
 }
 
 void PhysicsWorld::updateEffectState(float deltaTime) {
@@ -68,11 +76,29 @@ void PhysicsWorld::updateEffectState(float deltaTime) {
             ++it;
         }
     }
+
+    for (auto it = flattenedCells.begin(); it != flattenedCells.end();) {
+        it->timer = fmaxf(0.0f, it->timer - deltaTime);
+        if (it->timer <= 0.0f) {
+            it = flattenedCells.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 void PhysicsWorld::syncVisibleGridState(Track& track, float renderOriginZ) {
     const float colSpacing = TerrainGrid::COLUMN_SPACING;
     const float visibleMinZ = renderOriginZ - TerrainGrid::LENGTH * colSpacing;
+
+    for (auto it = flattenedCells.begin(); it != flattenedCells.end();) {
+        float worldZ = gridToWorldCoord(it->gridZ);
+        if (worldZ < visibleMinZ - colSpacing || worldZ > renderOriginZ + colSpacing * 2.0f) {
+            it = flattenedCells.erase(it);
+        } else {
+            ++it;
+        }
+    }
     
     for (int row = 0; row < TerrainGrid::LENGTH; row++) {
         for (int col = 0; col < TerrainGrid::WIDTH; col++) {
@@ -89,6 +115,9 @@ void PhysicsWorld::syncVisibleGridState(Track& track, float renderOriginZ) {
                 if (boostPadDark) {
                     cell.setFlag(CellFlags::BoostPadDark);
                 }
+            }
+            if (isFlattenedCell(worldX, worldZ)) {
+                cell.setFlag(CellFlags::FlattenPad);
             }
         }
     }
@@ -191,6 +220,81 @@ void PhysicsWorld::scheduleBoostPads(Vehicle& vehicle, Track& track, float total
     }
 }
 
+void PhysicsWorld::scheduleSkillCollectibles(Vehicle& vehicle, Track& track, float totalTime, float currentSpeed) {
+    while (totalTime >= nextSkillCollectibleSpawnTime) {
+        float targetWorldZ = vehicle.position.z - currentSpeed * kSkillCollectibleLeadTime;
+        int targetGridZ = worldToGridCoord(targetWorldZ);
+        float snappedWorldZ = gridToWorldCoord(targetGridZ);
+        float centerX = MathUtils::getRiverCenterX(snappedWorldZ);
+        track.skillCollectibles.push_back({
+            simd_make_float3(centerX, kFlightHeight + 0.9f, snappedWorldZ),
+            kSkillCollectibleRadius,
+            false
+        });
+        nextSkillCollectibleSpawnTime += kSkillCollectibleIntervalSeconds;
+    }
+
+    for (auto it = track.skillCollectibles.begin(); it != track.skillCollectibles.end();) {
+        if (it->collected || it->position.z > vehicle.position.z + 35.0f) {
+            it = track.skillCollectibles.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void PhysicsWorld::collectSkillCollectibles(Vehicle& vehicle, Track& track) {
+    for (auto& collectible : track.skillCollectibles) {
+        if (collectible.collected) {
+            continue;
+        }
+
+        // Pickup collision is based on stable X/Z placement, so the visual bob phase cannot cause misses.
+        float dx = vehicle.position.x - collectible.position.x;
+        float dz = vehicle.position.z - collectible.position.z;
+        float radius = collectible.radius + vehicle.hullRadius;
+        if ((dx * dx + dz * dz) <= radius * radius) {
+            collectible.collected = true;
+            vehicle.impactShakeTimer = fmaxf(vehicle.impactShakeTimer, 0.12f);
+            triggerFlattenCharge(vehicle);
+        }
+    }
+}
+
+void PhysicsWorld::triggerFlattenCharge(const Vehicle& vehicle) {
+    int centerGridX = worldToGridCoord(vehicle.position.x);
+    int startGridZ = worldToGridCoord(vehicle.position.z - 8.0f);
+
+    for (int row = 0; row < kFlattenRows; row++) {
+        int gridZ = startGridZ - row;
+        for (int col = -kFlattenHalfCols; col <= kFlattenHalfCols; col++) {
+            int gridX = centerGridX + col;
+            bool exists = false;
+            for (auto& flattened : flattenedCells) {
+                if (flattened.gridX == gridX && flattened.gridZ == gridZ) {
+                    flattened.timer = kFlattenDurationSeconds;
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                flattenedCells.push_back({gridX, gridZ, kFlattenDurationSeconds});
+            }
+        }
+    }
+}
+
+bool PhysicsWorld::isFlattenedCell(float worldX, float worldZ) const {
+    int gridX = worldToGridCoord(worldX);
+    int gridZ = worldToGridCoord(worldZ);
+    for (const auto& flattened : flattenedCells) {
+        if (flattened.gridX == gridX && flattened.gridZ == gridZ) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void PhysicsWorld::addOrRefreshCollisionCell(float worldX, float worldZ, float duration) {
     int gridX = worldToGridCoord(worldX);
     int gridZ = worldToGridCoord(worldZ);
@@ -241,6 +345,7 @@ void PhysicsWorld::update(float deltaTime, Vehicle& vehicle, Track& track, float
     vehicle.velocity.z = -currentSpeed;
     vehicle.position.z += vehicle.velocity.z * deltaTime;
     scheduleBoostPads(vehicle, track, totalTime, currentSpeed);
+    scheduleSkillCollectibles(vehicle, track, totalTime, currentSpeed);
     
     float flightHeight = kFlightHeight;
     vehicle.position.y = flightHeight;
@@ -251,6 +356,8 @@ void PhysicsWorld::update(float deltaTime, Vehicle& vehicle, Track& track, float
         vehicle.boostMultiplier = 2.0f;
         vehicle.collisionSlowdownTimer = 0.0f;
     }
+
+    float renderOriginZ = snapToGrid(vehicle.position.z) + kTerrainLeadDistance;
 
     // ── Lateral Steering (Linear with proportional snap) ─────────
     float maxLateralDeviation = vehicle.visibleLateralLimit;
@@ -271,8 +378,8 @@ void PhysicsWorld::update(float deltaTime, Vehicle& vehicle, Track& track, float
         vehicle.position.x += (deltaX > 0.0f) ? moveStep : -moveStep;
     }
     vehicle.velocity.x = deltaX;
+    collectSkillCollectibles(vehicle, track);
 
-    float renderOriginZ = snapToGrid(vehicle.position.z) + kTerrainLeadDistance;
     track.grid.originZ = renderOriginZ;
 
     // ── Chaser (Wall of Energy) ──────────────────────────────────
@@ -314,6 +421,9 @@ void PhysicsWorld::update(float deltaTime, Vehicle& vehicle, Track& track, float
     for (float gridZ = minGridZ; gridZ <= maxGridZ; gridZ += colSpacing) {
         for (float gridX = minGridX; gridX <= maxGridX; gridX += colSpacing) {
             float colHeight = MathUtils::getTerrainHeight(gridX, gridZ, track.slopeAngle);
+            if (isFlattenedCell(gridX, gridZ)) {
+                colHeight = flightHeight - 8.0f;
+            }
             float cellMinX = gridX - colSpacing * 0.5f;
             float cellMaxX = gridX + colSpacing * 0.5f;
             float cellMinZ = gridZ - colSpacing * 0.5f;

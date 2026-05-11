@@ -43,6 +43,11 @@ struct Uniforms {
     float2 viewportSize;
     float outlinePixelWidth;
     float boostTimer;
+    float visualModifierIntensity;
+    float visualEdgeGlowBoost;
+    float visualPathGlowBoost;
+    float visualParticleBoost;
+    int visualMoodStyle;
 };
 
 // Per-instance grid cell state passed from CPU
@@ -243,6 +248,9 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]],
         out.cellFlags = cell.flags;
         out.collisionTimer = cell.collisionTimer;
         out.cellCenterXZ = float2(worldCenterX, worldCenterZ);
+        if ((cell.flags & 128u) != 0u) {
+            h = -22.0;
+        }
         
         float4 worldPos;
         float tileSize = colSpacing * 1.012;
@@ -497,6 +505,34 @@ float3 applyLevelGrade(float3 color, int levelType) {
     return saturate(graded);
 }
 
+float3 visualMoodAccent(float3 keyTint, float3 glowTint, int moodStyle) {
+    float3 levelAccent = mix(keyTint, glowTint, 0.62);
+    if (moodStyle == 1) {
+        return mix(levelAccent, float3(0.72, 0.95, 1.0), 0.58);
+    }
+    if (moodStyle == 2) {
+        return mix(levelAccent, float3(0.14, 1.0, 0.76), 0.46);
+    }
+    if (moodStyle == 3) {
+        return mix(levelAccent, float3(1.0, 0.18, 0.08), 0.52);
+    }
+    return levelAccent;
+}
+
+float3 visualMoodFloorColor(float3 terrainBase, float3 keyTint, float3 glowTint, int moodStyle) {
+    float3 accent = visualMoodAccent(keyTint, glowTint, moodStyle);
+    if (moodStyle == 1) {
+        return mix(terrainBase, accent * float3(0.75, 0.92, 1.0), 0.58);
+    }
+    if (moodStyle == 2) {
+        return mix(terrainBase, accent * float3(0.62, 1.0, 0.86), 0.50);
+    }
+    if (moodStyle == 3) {
+        return mix(terrainBase, accent * float3(1.0, 0.74, 0.58), 0.56);
+    }
+    return terrainBase;
+}
+
 fragment float4 fragment_ship_pbr(VertexOut in [[stage_in]],
                                   constant Uniforms &uniforms [[buffer(1)]],
                                   texture2d<float> roughnessTexture [[texture(0)]],
@@ -601,12 +637,23 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
 
     if (uniforms.renderStyle == 6) {
         float speedFx = saturate((uniforms.vehicleSpeed - 85.0) / 190.0);
+        float particleBoost = clamp(uniforms.visualParticleBoost, 0.0, 0.6);
         float zTaper = 1.0 - smoothstep(0.22, 0.50, abs(in.localPosition.z));
         float radialTaper = 1.0 - smoothstep(0.12, 0.52, length(in.localPosition.xy));
-        float alpha = saturate(zTaper * radialTaper * (0.68 + speedFx * 0.32));
-        float3 streakColor = uniforms.color * (2.10 + speedFx * 1.35);
-        streakColor += levelGlowTint(uniforms.levelType) * (0.42 + speedFx * 0.36);
+        float alpha = saturate(zTaper * radialTaper * (0.68 + speedFx * 0.32 + particleBoost * 0.18));
+        float3 streakColor = uniforms.color * (2.10 + speedFx * 1.35 + particleBoost * 0.40);
+        streakColor += levelGlowTint(uniforms.levelType) * (0.42 + speedFx * 0.36 + particleBoost * 0.34);
         return float4(applyLevelGrade(saturate(streakColor), uniforms.levelType), alpha);
+    }
+
+    if (uniforms.renderStyle == 8) {
+        float rim = pow(1.0 - saturate(dot(normalize(in.worldNormal), viewDir)), 1.7);
+        float pulse = 0.78 + 0.22 * sin(uniforms.time * 7.5 + in.worldPosition.y * 0.35);
+        float edge = smoothstep(0.36, 0.49, max(max(abs(in.localPosition.x), abs(in.localPosition.y)), abs(in.localPosition.z)));
+        float3 redCore = float3(1.0, 0.02, 0.01) * (1.85 + pulse * 0.95);
+        redCore += float3(1.0, 0.42, 0.18) * rim * 1.85;
+        redCore += float3(1.0, 0.86, 0.62) * edge * (0.65 + pulse * 0.35);
+        return float4(applyLevelGrade(saturate(redCore), uniforms.levelType), 0.96);
     }
 
     if (uniforms.renderStyle == 5) {
@@ -667,11 +714,17 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         float hitMask = step(0.001, in.collisionTimer);
         bool isBoostPad = (in.cellFlags & 4u) != 0u;
         bool isBoostPadDark = (in.cellFlags & 512u) != 0u;
+        bool isFlattenedCell = (in.cellFlags & 128u) != 0u;
         // Single albedo for every terrain face. Hit feedback only overrides it temporarily.
         float3 hitColor = mix(float3(1.0, 0.02, 0.0), float3(0.0, 0.36, 1.0), boostAmount);
-        float3 albedo = mix(levelTerrainBaseColor(uniforms.levelType), hitColor, hitMask);
+        float storeGridMask = uniforms.renderStyle == 7 ? 1.0 : 0.0;
+        float moodStrength = clamp(uniforms.visualModifierIntensity, 0.0, 0.95) * (1.0 - storeGridMask);
+        float3 moodAccent = visualMoodAccent(keyTint, glowTint, uniforms.visualMoodStyle);
+        float3 terrainBase = mix(levelTerrainBaseColor(uniforms.levelType), float3(0.012, 0.030, 0.070), storeGridMask);
+        float3 albedo = mix(terrainBase, hitColor, hitMask);
         float3 boostPadColor = isBoostPadDark ? float3(0.01, 0.01, 0.012) : float3(0.96, 0.96, 0.92);
         albedo = mix(albedo, boostPadColor, topMask * (isBoostPad ? 1.0 : 0.0));
+        albedo = mix(albedo, float3(0.18, 0.02, 0.025), isFlattenedCell ? 0.72 : 0.0);
         albedo = mix(albedo, float3(0.96, 0.97, 0.96), boostAmount * 0.92);
 
         // Use the actual cube face normal so top and side shading matches the column geometry.
@@ -691,9 +744,16 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         float riverDistance = getDistFromRiverMetal(in.cellCenterXZ.x, in.cellCenterXZ.y);
         float riverbedMask = 1.0 - smoothstep(13.0, 34.0, riverDistance);
         float riverCenterMask = 1.0 - smoothstep(0.0, 17.0, riverDistance);
+        float riverbedTopMask = topMask * riverbedMask * (1.0 - hitMask) * (1.0 - boostAmount * 0.55);
+        float3 moodFloorColor = visualMoodFloorColor(terrainBase, keyTint, glowTint, uniforms.visualMoodStyle);
+        float floorMoodAmount = riverbedTopMask * moodStrength * (0.30 + riverCenterMask * 0.32);
+        finalColor = mix(finalColor, max(finalColor, moodFloorColor * (0.72 + moodStrength * 0.56)), floorMoodAmount);
+
         float pathFlow = 0.86 + 0.14 * sin(in.worldPosition.z * 0.075 - uniforms.time * 1.35);
-        float pathGlow = topMask * riverbedMask * pathFlow * (0.26 + riverCenterMask * 0.18 + boostAmount * 0.42);
-        finalColor += (glowTint * 0.78 + keyTint * 0.22) * pathGlow;
+        float pathModifier = 1.0 + clamp(uniforms.visualPathGlowBoost, 0.0, 0.85) + moodStrength * 0.42;
+        float pathGlow = topMask * riverbedMask * pathFlow * (0.26 + riverCenterMask * 0.18 + boostAmount * 0.42) * pathModifier;
+        float3 pathGlowColor = mix(mix(glowTint * 0.78 + keyTint * 0.22, moodAccent, moodStrength * 0.55), float3(0.18, 0.78, 1.0), storeGridMask);
+        finalColor += pathGlowColor * pathGlow;
         if (boostAmount > 0.001) {
             float trailPulse = 0.78 + 0.22 * sin(uniforms.time * 12.0 - in.cellCenterXZ.y * 0.15);
             float contactTrail = topMask * boostWake * trailPulse;
@@ -710,12 +770,13 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         // Emissive colored wireframe on visible faces only. Vertical thickness is
         // world-scaled so tall columns do not get a dark band near the top edge.
         float3 absPos = abs(in.localPosition);
-        float edgeWidth = 0.014;
-        float edgeSoftness = 0.010;
+        float edgeThicknessBoost = 1.0 + moodStrength * 1.15 + clamp(uniforms.visualEdgeGlowBoost, 0.0, 0.9) * 0.72;
+        float edgeWidth = 0.014 * edgeThicknessBoost;
+        float edgeSoftness = 0.010 * (1.0 + moodStrength * 0.55);
         float edgeX = 1.0 - smoothstep(edgeWidth, edgeWidth + edgeSoftness, 0.5 - absPos.x);
         float edgeZ = 1.0 - smoothstep(edgeWidth, edgeWidth + edgeSoftness, 0.5 - absPos.z);
         float columnHeight = max(in.texCoord.y + 50.0, 1.0);
-        float topEdgeWidth = clamp(0.18 / columnHeight, 0.0015, 0.012);
+        float topEdgeWidth = clamp((0.18 * edgeThicknessBoost) / columnHeight, 0.0015, 0.024);
         float topEdgeY = 1.0 - smoothstep(topEdgeWidth, topEdgeWidth * 2.0, 0.5 - in.localPosition.y);
         float xSideMask = step(0.75, abs(faceNormal.x));
         float zSideMask = step(0.75, abs(faceNormal.z));
@@ -726,10 +787,13 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
 
         // Back-face culling already removes hidden faces; keep all rasterized face edges neon.
         edgeMask *= max(topMask, sideMask);
-        float3 edgeColor = isBoostPad ? (isBoostPadDark ? float3(0.02, 0.02, 0.025) : mix(float3(1.0), glowTint, 0.32)) : mix(keyTint, glowTint, 0.68);
+        float3 edgeBaseColor = mix(mix(keyTint, glowTint, 0.68), float3(0.18, 0.88, 1.0), storeGridMask);
+        edgeBaseColor = mix(edgeBaseColor, moodAccent, moodStrength * 0.72);
+        float3 edgeColor = isBoostPad ? (isBoostPadDark ? float3(0.02, 0.02, 0.025) : mix(float3(1.0), glowTint, 0.32)) : edgeBaseColor;
+        edgeColor = mix(edgeColor, float3(1.0, 0.06, 0.02), isFlattenedCell ? 0.78 : 0.0);
         edgeColor = mix(edgeColor, hitColor, hitMask);
         edgeColor = mix(edgeColor, float3(0.68, 0.92, 1.0), boostWake * 0.62 * (1.0 - hitMask));
-        float edgeBoost = (isBoostPad ? 1.45 : 0.70) + riverbedMask * 0.32 + topMask * 0.16 + boostWake * 0.42;
+        float edgeBoost = (isBoostPad ? 1.45 : 0.70) + riverbedMask * 0.32 + topMask * 0.16 + boostWake * 0.42 + storeGridMask * 1.10 + clamp(uniforms.visualEdgeGlowBoost, 0.0, 1.0) + moodStrength * 0.72;
         float edgeAmount = saturate(edgeMask);
         finalColor = mix(finalColor, max(finalColor, edgeColor * (0.72 + edgeBoost * 0.58)), edgeAmount * 0.90);
         finalColor += edgeColor * edgeAmount * edgeBoost * 0.48;

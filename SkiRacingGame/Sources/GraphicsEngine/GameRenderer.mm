@@ -25,6 +25,11 @@ struct Uniforms {
     simd_float2 viewportSize;
     float outlinePixelWidth;
     float boostTimer;
+    float visualModifierIntensity;
+    float visualEdgeGlowBoost;
+    float visualPathGlowBoost;
+    float visualParticleBoost;
+    int visualMoodStyle;
 };
 
 // Must match GridCellGPU in Shaders.metal
@@ -152,8 +157,14 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         self.showsVehicle = YES;
         self.showsObstacles = YES;
         self.showsChaser = YES;
+        self.storeGridPalette = NO;
         self.previewScrollSpeed = 50.0f;
         self.vehicleVerticalOffset = 0.0f;
+        self.visualModifierIntensity = 0.0f;
+        self.visualEdgeGlowBoost = 0.0f;
+        self.visualPathGlowBoost = 0.0f;
+        self.visualParticleBoost = 0.0f;
+        self.visualMoodStyle = 0;
         
         mtkView.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
         mtkView.depthStencilPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
@@ -406,8 +417,14 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     // ── Camera ──────────────────────────────────────────────────────
     simd_float3 desiredCamPos;
     simd_float3 desiredCamTarget;
+    simd_float3 cameraUp = simd_make_float3(0, 1, 0);
     if (self.previewMode) {
-        desiredCamPos = renderVehiclePosition + simd_make_float3(0.0f, 96.0f, 58.0f);
+        if (self.storeGridPalette) {
+            desiredCamPos = renderVehiclePosition + simd_make_float3(0.0f, 112.0f, 0.0f);
+            cameraUp = simd_make_float3(0.0f, 0.0f, -1.0f);
+        } else {
+            desiredCamPos = renderVehiclePosition + simd_make_float3(0.0f, 96.0f, 58.0f);
+        }
         desiredCamTarget = renderVehiclePosition;
     } else {
         // Race the Sun style: camera stays locked to the ship so it remains centered on screen.
@@ -429,7 +446,9 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         _engine->setSteeringRestCenter(_smoothCamTarget.x);
     }
     
-    if (levelType == 0) {
+    if (self.storeGridPalette) {
+        view.clearColor = MTLClearColorMake(0.002, 0.008, 0.018, 1.0);
+    } else if (levelType == 0) {
         view.clearColor = MTLClearColorMake(0.015, 0.025, 0.08, 1.0);
     } else if (levelType == 1) {
         view.clearColor = MTLClearColorMake(0.09, 0.03, 0.015, 1.0);
@@ -439,7 +458,7 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         view.clearColor = MTLClearColorMake(0.04, 0.04, 0.04, 1.0);
     }
     
-    matrix_float4x4 viewMat = matrix_look_at(_smoothCamPos, _smoothCamTarget, simd_make_float3(0,1,0));
+    matrix_float4x4 viewMat = matrix_look_at(_smoothCamPos, _smoothCamTarget, cameraUp);
     float aspect = (float)view.drawableSize.width / (float)view.drawableSize.height;
     matrix_float4x4 projMat = matrix_perspective(55.0f * (M_PI / 180.0f), aspect, 0.1f, 3000.0f);
     matrix_float4x4 viewProj = simd_mul(projMat, viewMat);
@@ -472,6 +491,11 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         u.viewportSize = simd_make_float2((float)view.drawableSize.width, (float)view.drawableSize.height);
         u.outlinePixelWidth = 1.4f;
         u.boostTimer = vehicle.boostTimer;
+        u.visualModifierIntensity = self.previewMode ? 0.0f : self.visualModifierIntensity;
+        u.visualEdgeGlowBoost = self.previewMode ? 0.0f : self.visualEdgeGlowBoost;
+        u.visualPathGlowBoost = self.previewMode ? 0.0f : self.visualPathGlowBoost;
+        u.visualParticleBoost = self.previewMode ? 0.0f : self.visualParticleBoost;
+        u.visualMoodStyle = self.previewMode ? 0 : (int)self.visualMoodStyle;
         
         [enc setVertexBytes:&u length:sizeof(u) atIndex:1];
         [enc setFragmentBytes:&u length:sizeof(u) atIndex:1];
@@ -525,7 +549,34 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     [enc setRenderPipelineState:_pipelineState];
     [enc setDepthStencilState:_depthState];
     [enc setCullMode:MTLCullModeBack];
-    draw(_rockMesh, identity, simd_make_float3(1,1,1), nil, 1, TerrainGrid::WIDTH * TerrainGrid::LENGTH, 0);
+    draw(_rockMesh, identity, simd_make_float3(1,1,1), nil, 1, TerrainGrid::WIDTH * TerrainGrid::LENGTH, self.storeGridPalette ? 7 : 0);
+
+    // ── Skill Collectibles ────────────────────────────────────────
+    if (!self.previewMode && self.showsVehicle) {
+        [enc setRenderPipelineState:_blendPipelineState];
+        [enc setDepthStencilState:_transparentDepthState];
+        [enc setCullMode:MTLCullModeBack];
+
+        for (const auto& collectible : track.skillCollectibles) {
+            if (collectible.collected) continue;
+            if (collectible.position.z > renderVehiclePosition.z + 35.0f) continue;
+            if (collectible.position.z < renderVehiclePosition.z - 260.0f) continue;
+
+            const float collectibleCoreSize = 4.8f;
+            const float collectibleShellSize = 5.4f;
+            float bob = sinf((float)_elapsedTime * 4.2f + collectible.position.z * 0.04f) * (collectibleCoreSize * 3.0f);
+            simd_float3 pos = collectible.position + simd_make_float3(0.0f, bob, 0.0f);
+            matrix_float4x4 collectibleBase = matrix_translation(pos);
+            matrix_float4x4 silhouetteScale = matrix_scale(simd_make_float3(collectibleShellSize, collectibleShellSize, collectibleShellSize));
+            matrix_float4x4 collectibleScale = matrix_scale(simd_make_float3(collectibleCoreSize, collectibleCoreSize, collectibleCoreSize));
+            draw(_rockMesh, simd_mul(collectibleBase, silhouetteScale), simd_make_float3(0.0f, 0.0f, 0.0f), nil, 0, 1, 4);
+            draw(_rockMesh, simd_mul(collectibleBase, collectibleScale), simd_make_float3(1.0f, 0.05f, 0.02f), nil, 0, 1, 8);
+        }
+
+        [enc setRenderPipelineState:_pipelineState];
+        [enc setDepthStencilState:_depthState];
+        [enc setCullMode:MTLCullModeBack];
+    }
 
     // ── Chaser wall ───────────────────────────────────────────────
     [enc setRenderPipelineState:_blendPipelineState];
@@ -555,7 +606,8 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         [enc setCullMode:MTLCullModeNone];
 
         float speedAmount = fminf(fmaxf((simd_length(vehicle.velocity) - 85.0f) / 170.0f, 0.0f), 1.0f);
-        int streakCount = 34 + (int)roundf(speedAmount * 22.0f);
+        float particleBoost = fminf(fmaxf(self.visualParticleBoost, 0.0f), 0.6f);
+        int streakCount = 34 + (int)roundf(speedAmount * 22.0f) + (int)roundf(particleBoost * 18.0f);
         float recycleDistance = 235.0f;
         float flow = fmodf((float)_elapsedTime * (140.0f + simd_length(vehicle.velocity) * 1.25f), recycleDistance);
         for (int i = 0; i < streakCount; i++) {

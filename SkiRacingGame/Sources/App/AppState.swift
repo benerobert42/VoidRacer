@@ -51,6 +51,38 @@ enum GameLevel: Int, CaseIterable {
     }
 }
 
+enum RunVisualMood: Int, CaseIterable {
+    case baseline = 0
+    case recovery = 1
+    case flow = 2
+    case overdrive = 3
+
+    var name: String {
+        switch self {
+        case .baseline: return "BASELINE"
+        case .recovery: return "RECOVERY"
+        case .flow: return "FLOW"
+        case .overdrive: return "OVERDRIVE"
+        }
+    }
+}
+
+struct RunVisualModifier {
+    let mood: RunVisualMood
+    let intensity: Float
+    let edgeGlowBoost: Float
+    let pathGlowBoost: Float
+    let particleBoost: Float
+
+    static let baseline = RunVisualModifier(
+        mood: .baseline,
+        intensity: 0.10,
+        edgeGlowBoost: 0.0,
+        pathGlowBoost: 0.0,
+        particleBoost: 0.0
+    )
+}
+
 enum ShipSkin: String, CaseIterable, Identifiable {
     case blue = "Blue"
     case green = "Green"
@@ -319,6 +351,7 @@ class AppState: ObservableObject {
         uniqueKeysWithValues: ProgressionMissionKind.allCases.map { ($0.rawValue, 1) }
     )
     @Published private(set) var pendingGameEntryAnimation = false
+    @Published private(set) var activeRunVisualModifier: RunVisualModifier = .baseline
     
     let engine: GameEngineWrapper
     
@@ -377,12 +410,18 @@ class AppState: ObservableObject {
         )
         let progression = resolveProgression(from: snapshot)
         let totalCreditsAwarded = bankCoins + progression.totalCredits
+        let previousScore = lastRunScore
         
         lastRunScore = score
         lastRunCoins = totalCreditsAwarded
         lastRunXP = progression.totalXP
         lastRunRankUps = progression.rankUps
         lastRunCompletedMissions = progression.completedMissions
+        activeRunVisualModifier = resolveRunVisualModifier(
+            from: snapshot,
+            died: died,
+            previousScore: previousScore
+        )
         
         if totalCreditsAwarded > 0 {
             coins += totalCreditsAwarded
@@ -510,6 +549,44 @@ class AppState: ObservableObject {
         )
     }
     
+    private func resolveRunVisualModifier(
+        from snapshot: RunProgressSnapshot,
+        died: Bool,
+        previousScore: Int
+    ) -> RunVisualModifier {
+        if died && snapshot.survivedSeconds < 24 {
+            return RunVisualModifier(
+                mood: .recovery,
+                intensity: 0.72,
+                edgeGlowBoost: 0.38,
+                pathGlowBoost: 0.62,
+                particleBoost: 0.0
+            )
+        }
+
+        if snapshot.score > max(previousScore, 0) && snapshot.survivedSeconds >= 35 {
+            return RunVisualModifier(
+                mood: .overdrive,
+                intensity: 0.88,
+                edgeGlowBoost: 0.68,
+                pathGlowBoost: 0.46,
+                particleBoost: 0.48
+            )
+        }
+
+        if snapshot.nearMisses >= 5 || snapshot.survivedSeconds >= 55 {
+            return RunVisualModifier(
+                mood: .flow,
+                intensity: 0.74,
+                edgeGlowBoost: 0.48,
+                pathGlowBoost: 0.42,
+                particleBoost: 0.28
+            )
+        }
+
+        return .baseline
+    }
+
     private func awardXP(_ amount: Int) -> (rankUps: Int, creditReward: Int) {
         guard amount > 0 else { return (0, 0) }
         

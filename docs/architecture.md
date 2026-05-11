@@ -34,6 +34,7 @@ Current screens:
 - screen navigation
 - player currency
 - selected level
+- adaptive run visual modifiers that preserve level identity while changing only a small visual mood layer
 - persistence of the last selected level
 - pilot rank and pilot XP
 - active contract tiers
@@ -144,6 +145,7 @@ Current renderer behavior:
 - renders the ship body as shiny monochrome silver using simple Phong shading and high specular response
 - applies a render-only yaw boost so the ship visually faces into turns without altering controls or physics
 - uses an explicit ship render style for the vehicle body so scenery and obstacle meshes cannot accidentally receive ship material shading
+- accepts a constrained per-run visual modifier from SwiftUI; this only boosts existing level edge glow, path glow, and speed streaks, and never changes physics, collision, scoring, or terrain geometry
 
 ### Store Preview Rendering
 

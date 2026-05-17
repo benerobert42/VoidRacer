@@ -136,18 +136,37 @@ public:
         return fmaxf(minValue, fminf(maxValue, x));
     }
 
-    // Winding riverbed logic using a single stable centerline.
-    static float getRiverCenterX(float gridZ) {
+    // Winding riverbed logic using a single stable centerline. Per-run parameters
+    // vary the curve without desynchronizing CPU collision and GPU rendering.
+    static float getRiverCenterX(float gridZ,
+                                 float primaryPhase,
+                                 float secondaryPhase,
+                                 float frequencyScale,
+                                 float curveScale) {
         constexpr float kRiverPlayableHalfWidth = 100.0f;
         constexpr float kRiverTransitionWidth = 40.0f;
         constexpr float kRiverCenterLimit = kRiverPlayableHalfWidth - kRiverTransitionWidth;
-        constexpr float kRiverCurveScale = 0.92f;
         constexpr float kRiverPrimaryFrequency = 0.0074f;
         constexpr float kRiverSecondaryFrequency = 0.021f;
-        float riverBaseX = (sinf(gridZ * kRiverPrimaryFrequency) * (31.0f * kRiverCurveScale) +
-                            sinf(gridZ * kRiverSecondaryFrequency + 0.9f) * (16.0f * kRiverCurveScale));
+        float clampedFrequencyScale = clamp(frequencyScale, 0.86f, 1.18f);
+        float clampedCurveScale = clamp(curveScale, 0.78f, 1.10f);
+        float riverBaseX = (sinf(gridZ * kRiverPrimaryFrequency * clampedFrequencyScale + primaryPhase) * (31.0f * clampedCurveScale) +
+                            sinf(gridZ * kRiverSecondaryFrequency * clampedFrequencyScale + secondaryPhase) * (16.0f * clampedCurveScale));
 
         return clamp(riverBaseX, -kRiverCenterLimit, kRiverCenterLimit);
+    }
+
+    static float getRiverCenterX(float gridZ) {
+        return getRiverCenterX(gridZ, 0.0f, 0.9f, 1.0f, 0.92f);
+    }
+
+    static float getDistFromRiver(float gridX,
+                                  float gridZ,
+                                  float primaryPhase,
+                                  float secondaryPhase,
+                                  float frequencyScale,
+                                  float curveScale) {
+        return fabsf(gridX - getRiverCenterX(gridZ, primaryPhase, secondaryPhase, frequencyScale, curveScale));
     }
 
     static float getDistFromRiver(float gridX, float gridZ) {
@@ -155,7 +174,13 @@ public:
     }
 
     // Returns the discrete column height for grid coords
-    static float getTerrainHeight(float worldX, float worldZ, float slopeAngle) {
+    static float getTerrainHeight(float worldX,
+                                  float worldZ,
+                                  float slopeAngle,
+                                  float primaryPhase,
+                                  float secondaryPhase,
+                                  float frequencyScale,
+                                  float curveScale) {
         float colSpacing = 5.0f;
         float gridX = floorf((worldX + colSpacing*0.5f) / colSpacing) * colSpacing;
         float gridZ = floorf((worldZ + colSpacing*0.5f) / colSpacing) * colSpacing;
@@ -170,7 +195,7 @@ public:
         float h_river = fbm_simple(tcx, tcy, 2) * 2.5f - 17.5f; // approx -17.5 to -12.5 height
 
         // Blend them based on distance from the river centerline
-        float distFromCenter = getDistFromRiver(gridX, gridZ);
+        float distFromCenter = getDistFromRiver(gridX, gridZ, primaryPhase, secondaryPhase, frequencyScale, curveScale);
         float pathMix = math_smoothstep(15.0f, 40.0f, distFromCenter);
 
         float finalHeight = mix(h_river, h_mountain, pathMix);
@@ -179,6 +204,10 @@ public:
 
         // Quantize height to distinct vertical steps for the voxel look
         return floorf(finalHeight * 0.5f) * 2.0f;
+    }
+
+    static float getTerrainHeight(float worldX, float worldZ, float slopeAngle) {
+        return getTerrainHeight(worldX, worldZ, slopeAngle, 0.0f, 0.9f, 1.0f, 0.92f);
     }
 };
 

@@ -217,10 +217,10 @@ The current implementation uses:
 
 - a `60 x 80` terrain grid with gameplay constrained to the inner corridor
 - height-derived terrain data
-- a single deterministic river centerline shared by CPU collision and Metal rendering
+- a single per-run randomized river centerline shared by CPU collision and Metal rendering
 - one active opaque terrain-column type
 - transient collision-effect timers for hit feedback
-- no active destructible, transparent, pad, or terrain-mutation states in the baseline renderer
+- no active destructible or transparent terrain states in the baseline renderer
 - no decorative terrain-like landmark columns during the stabilization baseline
 
 ### `PhysicsWorld`

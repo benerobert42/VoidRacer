@@ -31,6 +31,10 @@ public:
     float overdriveCharge; // 0.0 to 1.0, builds from grazing
     float scoreMultiplier; // Increases with graze streaks
     bool isGrazing;        // True when currently in graze zone
+    int nearMissCount;
+    int comboCount;
+    float comboTimer;
+    float comboMultiplier;
     
     // Chaser (wall of energy behind)
     float chaserZ;         // Z position of the advancing wall

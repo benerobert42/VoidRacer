@@ -1,7 +1,7 @@
 #include "Vehicle.hpp"
 
 Vehicle::Vehicle() {
-    position = simd_make_float3(0.0f, 0.0f, 0.0f);
+    position = simd_make_float3(0.0f, 4.2f, 0.0f);
     velocity = simd_make_float3(0.0f, 0.0f, 0.0f);
     
     mass = 120.0f;
@@ -23,9 +23,13 @@ Vehicle::Vehicle() {
     overdriveCharge = 0.0f;
     scoreMultiplier = 1.0f;
     isGrazing = false;
+    nearMissCount = 0;
+    comboCount = 0;
+    comboTimer = 0.0f;
+    comboMultiplier = 1.0f;
     
     chaserZ = 50.0f;        // Starts behind the player
-    chaserBaseSpeed = 99.0f; // Matches the run's starting baseline speed
+    chaserBaseSpeed = 118.8f; // Matches the run's starting baseline speed
     
     boostTimer = 0.0f;
     boostMultiplier = 1.0f;
@@ -34,7 +38,7 @@ Vehicle::Vehicle() {
     terrainCollisionCooldownTimer = 0.0f;
     
     elevateTimer = 0.0f;
-    elevateFlightHeight = 12.0f;
+    elevateFlightHeight = 4.2f;
     
     flattenWaveActive = false;
     flattenWaveZ = 0.0f;

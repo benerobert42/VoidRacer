@@ -16,6 +16,7 @@ struct VertexOut {
     float2 cellCenterXZ;
     uint cellFlags; // reserved; active baseline keeps every terrain cell opaque
     float collisionTimer;
+    float effectValue;
 };
 
 struct FullscreenOut {
@@ -48,15 +49,20 @@ struct Uniforms {
     float visualPathGlowBoost;
     float visualParticleBoost;
     int visualMoodStyle;
+    float riverPrimaryPhase;
+    float riverSecondaryPhase;
+    float riverFrequencyScale;
+    float riverCurveScale;
+    float jumpTimer;
 };
 
 // Per-instance grid cell state passed from CPU
 struct GridCellGPU {
     uint16_t flags;
     float collisionTimer;
+    float effectValue;
 };
 
-constant float RIVER_CURVE_SCALE = 0.92;
 constant float RIVER_PRIMARY_FREQUENCY = 0.0074;
 constant float RIVER_SECONDARY_FREQUENCY = 0.021;
 
@@ -71,14 +77,30 @@ float3 hsv2rgb(float3 c) {
 
 // ── Terrain Logic Helpers ────────────────────────────────────────
 
-float getDistFromRiverMetal(float gridX, float gridZ) {
+float getDistFromRiverMetal(float gridX,
+                            float gridZ,
+                            float primaryPhase,
+                            float secondaryPhase,
+                            float frequencyScale,
+                            float curveScale) {
     const float kRiverPlayableHalfWidth = 100.0;
     const float kRiverTransitionWidth = 40.0;
     const float kRiverCenterLimit = kRiverPlayableHalfWidth - kRiverTransitionWidth;
-    float riverBaseX = (sin(gridZ * RIVER_PRIMARY_FREQUENCY) * (31.0 * RIVER_CURVE_SCALE) +
-                        sin(gridZ * RIVER_SECONDARY_FREQUENCY + 0.9) * (16.0 * RIVER_CURVE_SCALE));
+    float clampedFrequencyScale = clamp(frequencyScale, 0.86, 1.18);
+    float clampedCurveScale = clamp(curveScale, 0.78, 1.10);
+    float riverBaseX = (sin(gridZ * RIVER_PRIMARY_FREQUENCY * clampedFrequencyScale + primaryPhase) * (31.0 * clampedCurveScale) +
+                        sin(gridZ * RIVER_SECONDARY_FREQUENCY * clampedFrequencyScale + secondaryPhase) * (16.0 * clampedCurveScale));
 
     return abs(gridX - clamp(riverBaseX, -kRiverCenterLimit, kRiverCenterLimit));
+}
+
+float getDistFromRiverMetal(float gridX, float gridZ, constant Uniforms &uniforms) {
+    return getDistFromRiverMetal(gridX,
+                                 gridZ,
+                                 uniforms.riverPrimaryPhase,
+                                 uniforms.riverSecondaryPhase,
+                                 uniforms.riverFrequencyScale,
+                                 uniforms.riverCurveScale);
 }
 
 // Improved hash — better distribution, less pattern
@@ -197,7 +219,7 @@ float fbm_simple(float2 x, int octaves) {
 }
 
 // ── Terrain height (must match CPU MathUtils::getTerrainHeight) ──
-float terrainHeight(float2 xz, float slopeAngle) {
+float terrainHeight(float2 xz, constant Uniforms &uniforms) {
     float colSpacing = 5.0;
     float gridX = floor((xz.x + colSpacing*0.5) / colSpacing) * colSpacing;
     float gridZ = floor((xz.y + colSpacing*0.5) / colSpacing) * colSpacing;
@@ -212,7 +234,7 @@ float terrainHeight(float2 xz, float slopeAngle) {
     float h_river = fbm_simple(tc, 2) * 2.5 - 17.5; // approx -17.5 to -12.5 height
     
     // Blend them based on distance from the river centerline
-    float distFromCenter = getDistFromRiverMetal(gridX, gridZ);
+    float distFromCenter = getDistFromRiverMetal(gridX, gridZ, uniforms);
     
     // Path is 15 units wide (flat riverbed, total width 30), then sharply rising to mountain
     float pathMix = smoothstep(15.0, 40.0, distFromCenter);
@@ -242,14 +264,23 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]],
         float worldCenterX = gridX_idx * colSpacing;
         float worldCenterZ = uniforms.terrainOriginZ - (gridZ_idx * colSpacing);
         
-        float h = terrainHeight(float2(worldCenterX, worldCenterZ), uniforms.slopeAngle);
+        float h = terrainHeight(float2(worldCenterX, worldCenterZ), uniforms);
         
         GridCellGPU cell = gridState[instance_id];
         out.cellFlags = cell.flags;
         out.collisionTimer = cell.collisionTimer;
+        out.effectValue = cell.effectValue;
         out.cellCenterXZ = float2(worldCenterX, worldCenterZ);
-        if ((cell.flags & 128u) != 0u) {
+        bool vertexFlattenedCell = (cell.flags & 128u) != 0u;
+        if (vertexFlattenedCell) {
             h = -22.0;
+        }
+        if ((cell.flags & 64u) != 0u) {
+            float spring = 0.5 + 0.5 * sin(uniforms.time * 7.4 + cell.effectValue);
+            h = mix(-16.0, 5.0, spring);
+        }
+        if ((cell.flags & 1024u) != 0u && !vertexFlattenedCell) {
+            h = max(h, 24.0);
         }
         
         float4 worldPos;
@@ -438,6 +469,13 @@ float3 levelTerrainBaseColor(int levelType) {
     return float3(0.42, 0.42, 0.46);
 }
 
+float3 levelLightObjectColor(int levelType) {
+    return saturate(levelTerrainBaseColor(levelType) * 1.55 +
+                    levelKeyTint(levelType) * 0.30 +
+                    levelGlowTint(levelType) * 0.12 +
+                    float3(0.06));
+}
+
 float2 levelFogRange(int levelType) {
     if (levelType == 0) return float2(55.0, 260.0);
     if (levelType == 1) return float2(45.0, 230.0);
@@ -615,6 +653,38 @@ fragment float4 fragment_ship_outline(FullscreenOut in [[stage_in]],
     return float4(0.0, 0.0, 0.0, outline);
 }
 
+fragment float4 fragment_jump_fog(FullscreenOut in [[stage_in]],
+                                  constant Uniforms &uniforms [[buffer(1)]]) {
+    float jumpElapsed = clamp(3.0 - uniforms.jumpTimer, 0.0, 3.0);
+    float jumpAirAmount = uniforms.jumpTimer > 0.0
+        ? smoothstep(0.04, 0.32, jumpElapsed) * (1.0 - smoothstep(2.58, 3.0, jumpElapsed))
+        : 0.0;
+
+    float2 uv = clamp(in.uv, float2(0.0), float2(1.0));
+    // Jump fog is a far-end occlusion wall, not a global veil. It starts late
+    // in screen space so nearby terrain stays crisp, then becomes solid before
+    // the generated terrain end can silhouette against the backdrop.
+    float farScreen = smoothstep(0.54, 0.82, uv.y);
+    float hardWall = smoothstep(0.72, 0.93, uv.y);
+    float centerCurtain = 1.0 - smoothstep(0.06, 0.48, abs(uv.x - 0.5));
+    float sideFalloff = smoothstep(0.60, 1.0, abs(uv.x - 0.5) * 2.0);
+    float softNoise = fbm_simple(uv * float2(2.8, 3.6) + uniforms.time * 0.035, 3);
+
+    float fogMask = saturate(farScreen * 0.38 +
+                             hardWall * 0.92 +
+                             centerCurtain * hardWall * 0.28 +
+                             sideFalloff * farScreen * 0.14 +
+                             softNoise * farScreen * 0.05);
+    float alpha = saturate(fogMask * jumpAirAmount);
+
+    float3 fogColor = levelFogColor(uniforms.levelType) * 1.65 +
+                      levelGlowTint(uniforms.levelType) * 0.76 +
+                      levelKeyTint(uniforms.levelType) * 0.42;
+    fogColor = applyLevelGrade(saturate(fogColor), uniforms.levelType);
+
+    return float4(fogColor, alpha);
+}
+
 fragment float4 fragment_main(VertexOut in [[stage_in]],
                               constant Uniforms &uniforms [[buffer(1)]],
                               texture2d<float> colorTexture [[texture(0)]],
@@ -638,11 +708,14 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
     if (uniforms.renderStyle == 6) {
         float speedFx = saturate((uniforms.vehicleSpeed - 85.0) / 190.0);
         float particleBoost = clamp(uniforms.visualParticleBoost, 0.0, 0.6);
+        float jumpElapsed = clamp(3.0 - uniforms.jumpTimer, 0.0, 3.0);
+        float jumpCruise = uniforms.jumpTimer > 0.0 ? smoothstep(0.50, 0.75, jumpElapsed) * (1.0 - smoothstep(2.35, 2.75, jumpElapsed)) : 0.0;
         float zTaper = 1.0 - smoothstep(0.22, 0.50, abs(in.localPosition.z));
         float radialTaper = 1.0 - smoothstep(0.12, 0.52, length(in.localPosition.xy));
-        float alpha = saturate(zTaper * radialTaper * (0.68 + speedFx * 0.32 + particleBoost * 0.18));
-        float3 streakColor = uniforms.color * (2.10 + speedFx * 1.35 + particleBoost * 0.40);
-        streakColor += levelGlowTint(uniforms.levelType) * (0.42 + speedFx * 0.36 + particleBoost * 0.34);
+        float alpha = saturate(zTaper * radialTaper * (0.86 + speedFx * 0.40 + particleBoost * 0.22 + jumpCruise * 0.42));
+        float3 streakColor = uniforms.color * (2.95 + speedFx * 1.65 + particleBoost * 0.48 + jumpCruise * 2.60);
+        streakColor += levelGlowTint(uniforms.levelType) * (0.68 + speedFx * 0.46 + particleBoost * 0.42 + jumpCruise * 1.45);
+        streakColor += float3(0.58, 0.92, 1.0) * jumpCruise * 1.35;
         return float4(applyLevelGrade(saturate(streakColor), uniforms.levelType), alpha);
     }
 
@@ -650,10 +723,11 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         float rim = pow(1.0 - saturate(dot(normalize(in.worldNormal), viewDir)), 1.7);
         float pulse = 0.78 + 0.22 * sin(uniforms.time * 7.5 + in.worldPosition.y * 0.35);
         float edge = smoothstep(0.36, 0.49, max(max(abs(in.localPosition.x), abs(in.localPosition.y)), abs(in.localPosition.z)));
-        float3 redCore = float3(1.0, 0.02, 0.01) * (1.85 + pulse * 0.95);
-        redCore += float3(1.0, 0.42, 0.18) * rim * 1.85;
-        redCore += float3(1.0, 0.86, 0.62) * edge * (0.65 + pulse * 0.35);
-        return float4(applyLevelGrade(saturate(redCore), uniforms.levelType), 0.96);
+        float3 coreTint = max(uniforms.color, levelLightObjectColor(uniforms.levelType));
+        float3 core = coreTint * (1.42 + pulse * 0.42);
+        core += levelKeyTint(uniforms.levelType) * rim * 0.75;
+        core += float3(0.94) * edge * (0.18 + pulse * 0.12);
+        return float4(applyLevelGrade(saturate(core), uniforms.levelType), 0.96);
     }
 
     if (uniforms.renderStyle == 5) {
@@ -714,7 +788,9 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         float hitMask = step(0.001, in.collisionTimer);
         bool isBoostPad = (in.cellFlags & 4u) != 0u;
         bool isBoostPadDark = (in.cellFlags & 512u) != 0u;
+        bool isJumpPad = (in.cellFlags & 64u) != 0u;
         bool isFlattenedCell = (in.cellFlags & 128u) != 0u;
+        bool isGateBlock = (in.cellFlags & 1024u) != 0u;
         // Single albedo for every terrain face. Hit feedback only overrides it temporarily.
         float3 hitColor = mix(float3(1.0, 0.02, 0.0), float3(0.0, 0.36, 1.0), boostAmount);
         float storeGridMask = uniforms.renderStyle == 7 ? 1.0 : 0.0;
@@ -724,6 +800,8 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         float3 albedo = mix(terrainBase, hitColor, hitMask);
         float3 boostPadColor = isBoostPadDark ? float3(0.01, 0.01, 0.012) : float3(0.96, 0.96, 0.92);
         albedo = mix(albedo, boostPadColor, topMask * (isBoostPad ? 1.0 : 0.0));
+        albedo = mix(albedo, levelLightObjectColor(uniforms.levelType), isJumpPad ? 0.96 : 0.0);
+        albedo = mix(albedo, levelTerrainBaseColor(uniforms.levelType) * 1.24 + levelKeyTint(uniforms.levelType) * 0.16, isGateBlock ? 0.72 : 0.0);
         albedo = mix(albedo, float3(0.18, 0.02, 0.025), isFlattenedCell ? 0.72 : 0.0);
         albedo = mix(albedo, float3(0.96, 0.97, 0.96), boostAmount * 0.92);
 
@@ -741,7 +819,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         float baseAO = sideMask * (1.0 - smoothstep(-0.50, -0.16, in.localPosition.y));
         finalColor *= 1.0 - baseAO * mix(0.34, 0.12, hitMask) * (1.0 - boostAmount * 0.65);
 
-        float riverDistance = getDistFromRiverMetal(in.cellCenterXZ.x, in.cellCenterXZ.y);
+        float riverDistance = getDistFromRiverMetal(in.cellCenterXZ.x, in.cellCenterXZ.y, uniforms);
         float riverbedMask = 1.0 - smoothstep(13.0, 34.0, riverDistance);
         float riverCenterMask = 1.0 - smoothstep(0.0, 17.0, riverDistance);
         float riverbedTopMask = topMask * riverbedMask * (1.0 - hitMask) * (1.0 - boostAmount * 0.55);
@@ -766,11 +844,17 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
             finalColor = mix(finalColor, boostGlow * 1.35, 0.88);
             finalColor += (isBoostPadDark ? glowTint * 0.10 : glowTint * 0.42) * pulse;
         }
+        if (isJumpPad) {
+            float pulse = 0.78 + 0.22 * sin(uniforms.time * 10.5 + in.cellCenterXZ.y * 0.24);
+            float3 springColor = levelLightObjectColor(uniforms.levelType);
+            finalColor = mix(finalColor, springColor * (1.12 + pulse * 0.28), 0.72);
+            finalColor += levelKeyTint(uniforms.levelType) * pulse * (topMask * 0.38 + sideMask * 0.20);
+        }
 
         // Emissive colored wireframe on visible faces only. Vertical thickness is
         // world-scaled so tall columns do not get a dark band near the top edge.
         float3 absPos = abs(in.localPosition);
-        float edgeThicknessBoost = 1.0 + moodStrength * 1.15 + clamp(uniforms.visualEdgeGlowBoost, 0.0, 0.9) * 0.72;
+        float edgeThicknessBoost = 1.0 + moodStrength * 1.15 + clamp(uniforms.visualEdgeGlowBoost, 0.0, 0.9) * 0.72 + (isJumpPad ? 1.10 : 0.0) + (isGateBlock ? 0.55 : 0.0);
         float edgeWidth = 0.014 * edgeThicknessBoost;
         float edgeSoftness = 0.010 * (1.0 + moodStrength * 0.55);
         float edgeX = 1.0 - smoothstep(edgeWidth, edgeWidth + edgeSoftness, 0.5 - absPos.x);
@@ -790,17 +874,38 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         float3 edgeBaseColor = mix(mix(keyTint, glowTint, 0.68), float3(0.18, 0.88, 1.0), storeGridMask);
         edgeBaseColor = mix(edgeBaseColor, moodAccent, moodStrength * 0.72);
         float3 edgeColor = isBoostPad ? (isBoostPadDark ? float3(0.02, 0.02, 0.025) : mix(float3(1.0), glowTint, 0.32)) : edgeBaseColor;
+        edgeColor = mix(edgeColor, float3(0.0, 0.0, 0.0), isJumpPad ? 1.0 : 0.0);
+        edgeColor = mix(edgeColor, levelKeyTint(uniforms.levelType), isGateBlock ? 0.70 : 0.0);
         edgeColor = mix(edgeColor, float3(1.0, 0.06, 0.02), isFlattenedCell ? 0.78 : 0.0);
         edgeColor = mix(edgeColor, hitColor, hitMask);
         edgeColor = mix(edgeColor, float3(0.68, 0.92, 1.0), boostWake * 0.62 * (1.0 - hitMask));
-        float edgeBoost = (isBoostPad ? 1.45 : 0.70) + riverbedMask * 0.32 + topMask * 0.16 + boostWake * 0.42 + storeGridMask * 1.10 + clamp(uniforms.visualEdgeGlowBoost, 0.0, 1.0) + moodStrength * 0.72;
+        float edgeBoost = (isBoostPad ? 1.45 : 0.70) + (isJumpPad ? 2.10 : 0.0) + (isGateBlock ? 1.15 : 0.0) + riverbedMask * 0.32 + topMask * 0.16 + boostWake * 0.42 + storeGridMask * 1.10 + clamp(uniforms.visualEdgeGlowBoost, 0.0, 1.0) + moodStrength * 0.72;
         float edgeAmount = saturate(edgeMask);
-        finalColor = mix(finalColor, max(finalColor, edgeColor * (0.72 + edgeBoost * 0.58)), edgeAmount * 0.90);
-        finalColor += edgeColor * edgeAmount * edgeBoost * 0.48;
+        if (isJumpPad) {
+            finalColor = mix(finalColor, float3(0.0), edgeAmount * 0.96);
+        } else {
+            finalColor = mix(finalColor, max(finalColor, edgeColor * (0.72 + edgeBoost * 0.58)), edgeAmount * 0.90);
+            finalColor += edgeColor * edgeAmount * edgeBoost * 0.48;
+        }
         finalColor += float3(0.0, 0.42, 1.0) * hitMask * boostAmount * (1.65 + 0.35 * sin(uniforms.time * 18.0));
 
         // ── Determine alpha for this fragment ───────────────────
         float alpha = 1.0;
+
+        float jumpElapsed = clamp(3.0 - uniforms.jumpTimer, 0.0, 3.0);
+        float jumpAirAmount = uniforms.jumpTimer > 0.0 ? smoothstep(0.06, 0.40, jumpElapsed) * (1.0 - smoothstep(2.45, 3.0, jumpElapsed)) : 0.0;
+        float luminance = dot(finalColor, float3(0.299, 0.587, 0.114));
+        float3 coolDesaturated = mix(float3(luminance), float3(0.34, 0.62, 0.88), 0.34) * 0.56;
+        finalColor = mix(finalColor, coolDesaturated, jumpAirAmount * 0.76 * (1.0 - hitMask) * (1.0 - storeGridMask));
+        float terrainDepth = uniforms.terrainOriginZ - in.cellCenterXZ.y;
+        float farTerrainFog = smoothstep(175.0, 305.0, terrainDepth);
+        float hardFogWall = smoothstep(285.0, 345.0, terrainDepth);
+        float3 jumpFogColor = levelFogColor(uniforms.levelType) * 1.90 +
+                              levelGlowTint(uniforms.levelType) * 0.72 +
+                              levelKeyTint(uniforms.levelType) * 0.34;
+        jumpFogColor = saturate(jumpFogColor);
+        float fogAmount = saturate((farTerrainFog * 0.86 + hardFogWall * 0.98) * jumpAirAmount);
+        finalColor = mix(finalColor, jumpFogColor, fogAmount * (1.0 - hitMask) * (1.0 - storeGridMask));
 
         finalColor = applyLevelGrade(finalColor, uniforms.levelType);
         return float4(finalColor, alpha);

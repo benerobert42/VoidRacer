@@ -90,6 +90,18 @@
     return _engine->getVehicle().isGrazing;
 }
 
+- (int)getNearMissCount {
+    return _engine->getVehicle().nearMissCount;
+}
+
+- (float)getComboMultiplier {
+    return _engine->getVehicle().comboMultiplier;
+}
+
+- (float)getComboTimer {
+    return _engine->getVehicle().comboTimer;
+}
+
 - (float)getChaserDistance {
     return _engine->getVehicle().position.z - _engine->getVehicle().chaserZ;
 }

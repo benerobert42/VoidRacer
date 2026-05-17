@@ -28,7 +28,8 @@ enum class CellFlags : uint16_t {
     ElevationPad  = 1 << 6,
     FlattenPad    = 1 << 7,
     Collided      = 1 << 8,
-    BoostPadDark  = 1 << 9
+    BoostPadDark  = 1 << 9,
+    GateBlock     = 1 << 10
 };
 
 struct GridCell {
@@ -59,6 +60,10 @@ public:
     TerrainGrid grid;
     float finishLineZ;
     float slopeAngle; // in radians
+    float riverPrimaryPhase;
+    float riverSecondaryPhase;
+    float riverFrequencyScale;
+    float riverCurveScale;
     
     Track();
     void generateTrack();

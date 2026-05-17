@@ -1,11 +1,26 @@
 #include "GameEngine.hpp"
+#include "MathUtils.hpp"
 #include <iostream>
+
+namespace {
+void placeVehicleAtRiverCenter(Vehicle& vehicle, const Track& track) {
+    float centerX = MathUtils::getRiverCenterX(vehicle.position.z,
+                                               track.riverPrimaryPhase,
+                                               track.riverSecondaryPhase,
+                                               track.riverFrequencyScale,
+                                               track.riverCurveScale);
+    vehicle.position.x = centerX;
+    vehicle.steeringRestCenterX = centerX;
+}
+}
 
 GameEngine::GameEngine() {
     std::cout << "GameEngine created." << std::endl;
     totalTime = 0.0f;
     levelType = LEVEL_SNOWY_MOUNTAIN;
     visibleLateralLimit = 95.0f;
+    vehicle.visibleLateralLimit = visibleLateralLimit;
+    placeVehicleAtRiverCenter(vehicle, track);
 }
 
 GameEngine::~GameEngine() {
@@ -27,6 +42,7 @@ void GameEngine::setLevel(int level) {
     vehicle = Vehicle();
     vehicle.visibleLateralLimit = visibleLateralLimit;
     track = Track();
+    placeVehicleAtRiverCenter(vehicle, track);
     physics = PhysicsWorld();
     totalTime = 0.0f;
 }

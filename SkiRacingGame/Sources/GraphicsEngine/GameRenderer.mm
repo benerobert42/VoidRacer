@@ -30,13 +30,31 @@ struct Uniforms {
     float visualPathGlowBoost;
     float visualParticleBoost;
     int visualMoodStyle;
+    float riverPrimaryPhase;
+    float riverSecondaryPhase;
+    float riverFrequencyScale;
+    float riverCurveScale;
+    float jumpTimer;
 };
 
 // Must match GridCellGPU in Shaders.metal
 struct GridCellGPU {
     uint16_t flags;
     float collisionTimer;
+    float effectValue;
 };
+
+static float smoothStep01(float value) {
+    float t = fminf(fmaxf(value, 0.0f), 1.0f);
+    return t * t * (3.0f - 2.0f * t);
+}
+
+static simd_float3 levelLightObjectColor(int levelType) {
+    if (levelType == 0) return simd_make_float3(0.34f, 1.0f, 1.0f);
+    if (levelType == 1) return simd_make_float3(1.0f, 0.68f, 0.26f);
+    if (levelType == 2) return simd_make_float3(0.38f, 1.0f, 0.60f);
+    return simd_make_float3(0.72f, 0.72f, 0.76f);
+}
 
 @implementation GameRenderer {
     id<MTLDevice> _device;
@@ -45,6 +63,7 @@ struct GridCellGPU {
     id<MTLRenderPipelineState> _shipPipelineState;
     id<MTLRenderPipelineState> _shipMaskPipelineState;
     id<MTLRenderPipelineState> _shipOutlineCompositePipelineState;
+    id<MTLRenderPipelineState> _jumpFogCompositePipelineState;
     id<MTLDepthStencilState> _depthState;
     MTLVertexDescriptor *_vertexDescriptor;
     id<MTLSamplerState> _samplerState;
@@ -130,6 +149,16 @@ static matrix_float4x4 matrix_rotation_y(float radians) {
     );
 }
 
+static matrix_float4x4 matrix_rotation_z(float radians) {
+    float c = cosf(radians); float s = sinf(radians);
+    return simd_matrix(
+        simd_make_float4(c,  s, 0, 0),
+        simd_make_float4(-s, c, 0, 0),
+        simd_make_float4(0,  0, 1, 0),
+        simd_make_float4(0,  0, 0, 1)
+    );
+}
+
 static matrix_float4x4 matrix_scale(simd_float3 s) {
     return simd_matrix(
         simd_make_float4(s.x, 0, 0, 0),
@@ -192,6 +221,7 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     id<MTLFunction> shipMaskFragmentFunction = [defaultLibrary newFunctionWithName:@"fragment_ship_mask"];
     id<MTLFunction> fullscreenVertexFunction = [defaultLibrary newFunctionWithName:@"vertex_fullscreen"];
     id<MTLFunction> shipOutlineFragmentFunction = [defaultLibrary newFunctionWithName:@"fragment_ship_outline"];
+    id<MTLFunction> jumpFogFragmentFunction = [defaultLibrary newFunctionWithName:@"fragment_jump_fog"];
     
     _vertexDescriptor = [[MTLVertexDescriptor alloc] init];
     _vertexDescriptor.attributes[0].format = MTLVertexFormatFloat3;
@@ -249,6 +279,24 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     outlineDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
     _shipOutlineCompositePipelineState = [_device newRenderPipelineStateWithDescriptor:outlineDesc error:&error];
     NSAssert(_shipOutlineCompositePipelineState, @"Failed to create ship outline composite pipeline state: %@", error);
+
+    MTLRenderPipelineDescriptor *jumpFogDesc = [[MTLRenderPipelineDescriptor alloc] init];
+    jumpFogDesc.label = @"Jump Fog Composite Pipeline";
+    jumpFogDesc.vertexFunction = fullscreenVertexFunction;
+    jumpFogDesc.fragmentFunction = jumpFogFragmentFunction;
+    jumpFogDesc.colorAttachments[0].pixelFormat = view.colorPixelFormat;
+    jumpFogDesc.colorAttachments[0].blendingEnabled = YES;
+    jumpFogDesc.colorAttachments[0].rgbBlendOperation = MTLBlendOperationAdd;
+    jumpFogDesc.colorAttachments[0].alphaBlendOperation = MTLBlendOperationAdd;
+    jumpFogDesc.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+    jumpFogDesc.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    jumpFogDesc.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorOne;
+    jumpFogDesc.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+    jumpFogDesc.depthAttachmentPixelFormat = view.depthStencilPixelFormat;
+    jumpFogDesc.stencilAttachmentPixelFormat = view.depthStencilPixelFormat;
+    jumpFogDesc.rasterSampleCount = view.sampleCount;
+    _jumpFogCompositePipelineState = [_device newRenderPipelineStateWithDescriptor:jumpFogDesc error:&error];
+    NSAssert(_jumpFogCompositePipelineState, @"Failed to create jump fog composite pipeline state: %@", error);
     
     // ── Blended pipeline for non-terrain effects ───────────
     MTLRenderPipelineDescriptor *blendDesc = [[MTLRenderPipelineDescriptor alloc] init];
@@ -406,6 +454,27 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     const Vehicle& vehicle = _engine->getVehicle();
     const Track& track = _engine->getTrack();
     int levelType = self.forcedLevelType >= 0 ? (int)self.forcedLevelType : _engine->getLevelType();
+    constexpr float jumpRiseDuration = 0.5f;
+    constexpr float jumpCruiseDuration = 2.0f;
+    constexpr float jumpFallDuration = 0.5f;
+    constexpr float jumpTotalDuration = jumpRiseDuration + jumpCruiseDuration + jumpFallDuration;
+    float jumpElapsed = fminf(fmaxf(jumpTotalDuration - vehicle.elevateTimer, 0.0f), jumpTotalDuration);
+    float jumpLaunchAmount = 0.0f;
+    float jumpCruiseAmount = 0.0f;
+    float jumpDescentAmount = 0.0f;
+    if (vehicle.elevateTimer > 0.0f) {
+        if (jumpElapsed < jumpRiseDuration) {
+            jumpLaunchAmount = 1.0f - smoothStep01(jumpElapsed / jumpRiseDuration);
+        } else if (jumpElapsed < jumpRiseDuration + jumpCruiseDuration) {
+            float cruiseElapsed = jumpElapsed - jumpRiseDuration;
+            float cruiseIn = smoothStep01(fminf(cruiseElapsed / 0.22f, 1.0f));
+            float cruiseOut = 1.0f - smoothStep01(fmaxf((cruiseElapsed - (jumpCruiseDuration - 0.28f)) / 0.28f, 0.0f));
+            jumpCruiseAmount = fminf(cruiseIn, cruiseOut);
+        } else {
+            float descentElapsed = jumpElapsed - jumpRiseDuration - jumpCruiseDuration;
+            jumpDescentAmount = 1.0f - smoothStep01(descentElapsed / jumpFallDuration);
+        }
+    }
     simd_float3 renderVehiclePosition = vehicle.position;
     if (self.previewMode) {
         float previewSpeed = fmaxf(self.previewScrollSpeed * 1.2f, 1.0f);
@@ -430,6 +499,8 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         // Race the Sun style: camera stays locked to the ship so it remains centered on screen.
         desiredCamPos = visibleVehiclePosition + simd_make_float3(0.0f, 96.0f, 58.0f);
         desiredCamTarget = visibleVehiclePosition;
+        float jumpCameraAmount = jumpLaunchAmount * 1.0f + jumpCruiseAmount * 0.48f + jumpDescentAmount * 0.20f;
+        desiredCamPos += simd_make_float3(0.0f, 0.0f, 14.0f * jumpCameraAmount);
     }
     if (!self.previewMode && vehicle.impactShakeTimer > 0.0f) {
         float shakeAmount = (vehicle.impactShakeTimer / 0.22f);
@@ -460,7 +531,8 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     
     matrix_float4x4 viewMat = matrix_look_at(_smoothCamPos, _smoothCamTarget, cameraUp);
     float aspect = (float)view.drawableSize.width / (float)view.drawableSize.height;
-    matrix_float4x4 projMat = matrix_perspective(55.0f * (M_PI / 180.0f), aspect, 0.1f, 3000.0f);
+    float jumpFovBoost = jumpLaunchAmount * 4.5f + jumpCruiseAmount * 2.0f;
+    matrix_float4x4 projMat = matrix_perspective((55.0f + jumpFovBoost) * (M_PI / 180.0f), aspect, 0.1f, 3000.0f);
     matrix_float4x4 viewProj = simd_mul(projMat, viewMat);
 
     float terrainOriginZ = track.grid.originZ;
@@ -496,6 +568,11 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         u.visualPathGlowBoost = self.previewMode ? 0.0f : self.visualPathGlowBoost;
         u.visualParticleBoost = self.previewMode ? 0.0f : self.visualParticleBoost;
         u.visualMoodStyle = self.previewMode ? 0 : (int)self.visualMoodStyle;
+        u.riverPrimaryPhase = track.riverPrimaryPhase;
+        u.riverSecondaryPhase = track.riverSecondaryPhase;
+        u.riverFrequencyScale = track.riverFrequencyScale;
+        u.riverCurveScale = track.riverCurveScale;
+        u.jumpTimer = vehicle.elevateTimer;
         
         [enc setVertexBytes:&u length:sizeof(u) atIndex:1];
         [enc setFragmentBytes:&u length:sizeof(u) atIndex:1];
@@ -539,6 +616,7 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         for (int i = 0; i < TerrainGrid::WIDTH * TerrainGrid::LENGTH; i++) {
             gpuCells[i].flags = grid.cells[i].flags;
             gpuCells[i].collisionTimer = grid.cells[i].collisionEffectTimer;
+            gpuCells[i].effectValue = grid.cells[i].baseHeight;
         }
     }
     
@@ -550,6 +628,25 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     [enc setDepthStencilState:_depthState];
     [enc setCullMode:MTLCullModeBack];
     draw(_rockMesh, identity, simd_make_float3(1,1,1), nil, 1, TerrainGrid::WIDTH * TerrainGrid::LENGTH, self.storeGridPalette ? 7 : 0);
+
+    if (!self.previewMode && vehicle.elevateTimer > 0.0f) {
+        Uniforms fogUniforms;
+        memset(&fogUniforms, 0, sizeof(fogUniforms));
+        fogUniforms.levelType = levelType;
+        fogUniforms.jumpTimer = vehicle.elevateTimer;
+        fogUniforms.time = (float)_elapsedTime;
+        fogUniforms.viewportSize = simd_make_float2((float)view.drawableSize.width, (float)view.drawableSize.height);
+
+        [enc setRenderPipelineState:_jumpFogCompositePipelineState];
+        [enc setDepthStencilState:_overlayDepthState];
+        [enc setCullMode:MTLCullModeNone];
+        [enc setFragmentBytes:&fogUniforms length:sizeof(fogUniforms) atIndex:1];
+        [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+
+        [enc setRenderPipelineState:_pipelineState];
+        [enc setDepthStencilState:_depthState];
+        [enc setCullMode:MTLCullModeBack];
+    }
 
     // ── Skill Collectibles ────────────────────────────────────────
     if (!self.previewMode && self.showsVehicle) {
@@ -563,14 +660,14 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
             if (collectible.position.z < renderVehiclePosition.z - 260.0f) continue;
 
             const float collectibleCoreSize = 4.8f;
-            const float collectibleShellSize = 5.4f;
+            const float collectibleShellSize = 7.2f;
             float bob = sinf((float)_elapsedTime * 4.2f + collectible.position.z * 0.04f) * (collectibleCoreSize * 3.0f);
             simd_float3 pos = collectible.position + simd_make_float3(0.0f, bob, 0.0f);
             matrix_float4x4 collectibleBase = matrix_translation(pos);
             matrix_float4x4 silhouetteScale = matrix_scale(simd_make_float3(collectibleShellSize, collectibleShellSize, collectibleShellSize));
             matrix_float4x4 collectibleScale = matrix_scale(simd_make_float3(collectibleCoreSize, collectibleCoreSize, collectibleCoreSize));
             draw(_rockMesh, simd_mul(collectibleBase, silhouetteScale), simd_make_float3(0.0f, 0.0f, 0.0f), nil, 0, 1, 4);
-            draw(_rockMesh, simd_mul(collectibleBase, collectibleScale), simd_make_float3(1.0f, 0.05f, 0.02f), nil, 0, 1, 8);
+            draw(_rockMesh, simd_mul(collectibleBase, collectibleScale), levelLightObjectColor(levelType), nil, 0, 1, 8);
         }
 
         [enc setRenderPipelineState:_pipelineState];
@@ -599,6 +696,23 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     
     // Decorative landmark cubes are disabled for the baseline pass so only streamed grid terrain is visible.
 
+    // ── Jump launch beam ──────────────────────────────────────────
+    if (!self.previewMode && self.showsVehicle && !vehicle.isDestroyed && jumpLaunchAmount > 0.001f) {
+        [enc setRenderPipelineState:_blendPipelineState];
+        [enc setDepthStencilState:_overlayDepthState];
+        [enc setCullMode:MTLCullModeNone];
+
+        float beamHeight = 84.0f * (0.65f + jumpLaunchAmount * 0.35f);
+        simd_float3 beamPosition = visibleVehiclePosition + simd_make_float3(0.0f, -beamHeight * 0.52f, 6.0f);
+        matrix_float4x4 beamModel = simd_mul(matrix_translation(beamPosition),
+                                             matrix_scale(simd_make_float3(3.4f + jumpLaunchAmount * 2.8f, beamHeight, 3.4f + jumpLaunchAmount * 2.8f)));
+        draw(_rockMesh, beamModel, simd_make_float3(0.78f, 0.98f, 1.0f) * (1.4f + jumpLaunchAmount * 1.4f), nil, 0, 1, 6);
+
+        [enc setRenderPipelineState:_pipelineState];
+        [enc setDepthStencilState:_depthState];
+        [enc setCullMode:MTLCullModeBack];
+    }
+
     // ── Speed streaks ──────────────────────────────────────────────
     if (!self.previewMode && self.showsVehicle && !vehicle.isDestroyed) {
         [enc setRenderPipelineState:_blendPipelineState];
@@ -607,26 +721,29 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
 
         float speedAmount = fminf(fmaxf((simd_length(vehicle.velocity) - 85.0f) / 170.0f, 0.0f), 1.0f);
         float particleBoost = fminf(fmaxf(self.visualParticleBoost, 0.0f), 0.6f);
-        int streakCount = 34 + (int)roundf(speedAmount * 22.0f) + (int)roundf(particleBoost * 18.0f);
+        int streakCount = 54 + (int)roundf(speedAmount * 34.0f) + (int)roundf(particleBoost * 22.0f) + (int)roundf(jumpCruiseAmount * 64.0f);
         float recycleDistance = 235.0f;
-        float flow = fmodf((float)_elapsedTime * (140.0f + simd_length(vehicle.velocity) * 1.25f), recycleDistance);
+        float flow = fmodf((float)_elapsedTime * (140.0f + simd_length(vehicle.velocity) * (1.25f + jumpCruiseAmount * 0.58f)), recycleDistance);
         for (int i = 0; i < streakCount; i++) {
             float seed = (float)i * 12.9898f;
             float lane = sinf(seed * 0.47f) * 0.5f + 0.5f;
             float side = cosf(seed * 1.73f) < 0.0f ? -1.0f : 1.0f;
-            float x = visibleVehiclePosition.x + side * (6.0f + lane * 44.0f);
-            float y = visibleVehiclePosition.y + 1.5f + (sinf(seed * 0.61f) * 0.5f + 0.5f) * 13.0f;
+            float x = visibleVehiclePosition.x + side * (3.5f + lane * (22.0f + jumpCruiseAmount * 16.0f));
+            float y = visibleVehiclePosition.y - 1.0f + (sinf(seed * 0.61f) * 0.5f + 0.5f) * (18.0f + jumpCruiseAmount * 18.0f);
             float phase = fmodf((float)i * 37.0f - flow, recycleDistance);
             if (phase < 0.0f) {
                 phase += recycleDistance;
             }
             float z = renderVehiclePosition.z - (18.0f + phase);
 
-            float length = 58.0f + speedAmount * 62.0f;
-            float thickness = 0.55f + speedAmount * 0.35f;
+            float length = 86.0f + speedAmount * 82.0f + jumpCruiseAmount * 96.0f;
+            float thickness = 1.15f + speedAmount * 0.58f + jumpCruiseAmount * 0.55f;
             matrix_float4x4 streakModel = simd_mul(matrix_translation(simd_make_float3(x, y, z)),
                                                    matrix_scale(simd_make_float3(thickness, thickness * 0.42f, length)));
-            draw(_rockMesh, streakModel, levelType == 1 ? simd_make_float3(1.0f, 0.62f, 0.18f) : simd_make_float3(0.55f, 0.96f, 1.0f), nil, 0, 1, 6);
+            simd_float3 streakColor = levelType == 1 ? simd_make_float3(1.0f, 0.62f, 0.18f) : simd_make_float3(0.55f, 0.96f, 1.0f);
+            float jumpStreakTint = jumpCruiseAmount * 0.72f;
+            streakColor = streakColor * (1.0f - jumpStreakTint) + simd_make_float3(0.86f, 0.98f, 1.0f) * jumpStreakTint;
+            draw(_rockMesh, streakModel, streakColor, nil, 0, 1, 6);
         }
 
         [enc setRenderPipelineState:_pipelineState];
@@ -667,8 +784,11 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         
         matrix_float4x4 vehScale = matrix_scale(simd_make_float3(0.8f, 0.8f, 0.8f));
         matrix_float4x4 vehRotY = matrix_rotation_y(yaw);
+        matrix_float4x4 vehRotZ = (self.previewMode && self.storeGridPalette)
+            ? matrix_rotation_z((float)_elapsedTime * 0.42f)
+            : matrix_rotation_z(0.0f);
         matrix_float4x4 vehTrans = matrix_translation(visibleVehiclePosition + simd_make_float3(0, 0.25f, 0));
-        matrix_float4x4 vehModel = simd_mul(vehTrans, simd_mul(vehRotY, vehScale));
+        matrix_float4x4 vehModel = simd_mul(vehTrans, simd_mul(vehRotY, simd_mul(vehRotZ, vehScale)));
         // Draw the Chrome material ship body and mark its pixels in stencil.
         simd_float3 vehCol = vehicle.isDestroyed
             ? simd_make_float3(0.38f, 0.38f, 0.40f)

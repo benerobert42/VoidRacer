@@ -1,5 +1,4 @@
 import SwiftUI
-import SceneKit
 import UIKit
 
 private enum StorePalette {
@@ -169,9 +168,10 @@ private struct ShipStorePage: View {
             ShipPreviewView(shipName: ship.rawValue)
                 .padding(.horizontal, -42)
                 .padding(.vertical, -18)
-            .frame(maxWidth: .infinity)
-            .frame(height: previewHeight)
-            .contentShape(Rectangle())
+                .offset(y: 30)
+                .frame(maxWidth: .infinity)
+                .frame(height: previewHeight)
+                .contentShape(Rectangle())
 
             VStack(spacing: 14) {
                 statLines
@@ -552,177 +552,42 @@ private struct StoreBackButton: View {
     }
 }
 
-struct ShipPreviewView: UIViewRepresentable {
+struct ShipPreviewView: View {
     let shipName: String
-    private static let chromeRoughnessImage = materialTextureImage(named: "Chrome_Parametric_roughness")
-    private static let chromeNormalImage = materialTextureImage(named: "Chrome_Parametric_normal")
+    @EnvironmentObject private var appState: AppState
+    @State private var previewEngineWrapper: GameEngineWrapper
 
-    func makeUIView(context: Context) -> SCNView {
-        let view = SCNView()
-        view.backgroundColor = .clear
-        view.scene = makeScene()
-        view.allowsCameraControl = false
-        view.autoenablesDefaultLighting = false
-        view.antialiasingMode = .multisampling4X
-        view.isPlaying = true
-        return view
+    init(shipName: String) {
+        self.shipName = shipName
+        let wrapper = GameEngineWrapper()
+        wrapper.setVehicleMeshName(shipName)
+        _previewEngineWrapper = State(initialValue: wrapper)
     }
 
-    func updateUIView(_ uiView: SCNView, context: Context) {
-        uiView.scene = makeScene()
-    }
-
-    private func makeScene() -> SCNScene {
-        let scene = SCNScene()
-        scene.background.contents = UIColor.clear
-
-        let cameraNode = SCNNode()
-        cameraNode.camera = SCNCamera()
-        cameraNode.camera?.fieldOfView = 34
-        cameraNode.camera?.wantsHDR = false
-        cameraNode.camera?.wantsExposureAdaptation = false
-        cameraNode.camera?.zNear = 0.1
-        cameraNode.camera?.zFar = 100.0
-        cameraNode.position = SCNVector3(0, 8.68, 0)
-        cameraNode.look(
-            at: SCNVector3(0, 0.55, 0),
-            up: SCNVector3(0, 0, -1),
-            localFront: SCNVector3(0, 0, -1)
+    var body: some View {
+        GameMetalView(
+            engineWrapper: previewEngineWrapper,
+            previewLevel: appState.selectedLevel,
+            previewScrollSpeed: 12,
+            showVehicle: true,
+            showObstacles: false,
+            showChaser: false,
+            storeGridPalette: true,
+            preferredFramesPerSecond: 30
         )
-        scene.rootNode.addChildNode(cameraNode)
-
-        let keyLight = SCNNode()
-        keyLight.light = SCNLight()
-        keyLight.light?.type = .directional
-        keyLight.light?.intensity = 1100
-        keyLight.light?.color = UIColor(red: 1.0, green: 0.96, blue: 0.92, alpha: 1.0)
-        keyLight.eulerAngles = SCNVector3(-0.9, 0.7, 0.2)
-        scene.rootNode.addChildNode(keyLight)
-
-        let fillLight = SCNNode()
-        fillLight.light = SCNLight()
-        fillLight.light?.type = .omni
-        fillLight.light?.intensity = 420
-        fillLight.light?.color = UIColor(red: 0.58, green: 0.86, blue: 1.0, alpha: 1.0)
-        fillLight.position = SCNVector3(-4.5, 1.5, 6.5)
-        scene.rootNode.addChildNode(fillLight)
-
-        let rimLight = SCNNode()
-        rimLight.light = SCNLight()
-        rimLight.light?.type = .omni
-        rimLight.light?.intensity = 560
-        rimLight.light?.color = UIColor(red: 0.95, green: 0.52, blue: 1.0, alpha: 1.0)
-        rimLight.position = SCNVector3(2.2, 2.0, -6.0)
-        scene.rootNode.addChildNode(rimLight)
-
-        let ambient = SCNNode()
-        ambient.light = SCNLight()
-        ambient.light?.type = .ambient
-        ambient.light?.intensity = 120
-        ambient.light?.color = UIColor(white: 0.30, alpha: 1.0)
-        scene.rootNode.addChildNode(ambient)
-
-        if let shipNode = loadShipNode() {
-            scene.rootNode.addChildNode(shipNode)
+        .id(shipName)
+        .clipShape(Rectangle())
+        .onAppear(perform: syncPreview)
+        .onChange(of: shipName) { _ in
+            syncPreview()
         }
-
-        return scene
-    }
-
-    private func loadShipNode() -> SCNNode? {
-        guard let objURL = Bundle.main.url(forResource: shipName, withExtension: "obj", subdirectory: "\(shipName)/OBJ") else {
-            return nil
-        }
-
-        guard let scene = try? SCNScene(url: objURL, options: nil) else {
-            return nil
-        }
-
-        let container = SCNNode()
-        for child in scene.rootNode.childNodes {
-            let clone = child.clone()
-            applySilverMaterial(to: clone)
-            container.addChildNode(clone)
-        }
-
-        let (minVec, maxVec) = container.boundingBox
-        let sizeX = maxVec.x - minVec.x
-        let sizeY = maxVec.y - minVec.y
-        let sizeZ = maxVec.z - minVec.z
-        let maxDimension = max(sizeX, max(sizeY, sizeZ))
-        let scale = maxDimension > 0 ? 2.95 / maxDimension : 1.0
-        container.scale = SCNVector3(scale, scale, scale)
-
-        let centerX = (minVec.x + maxVec.x) * 0.5
-        let centerY = (minVec.y + maxVec.y) * 0.5
-        let centerZ = (minVec.z + maxVec.z) * 0.5
-        let hoverLift: Float = 0.68
-        container.position = SCNVector3(-centerX * scale, -centerY * scale + hoverLift, -centerZ * scale)
-        container.eulerAngles = SCNVector3(0, Float.pi, 0)
-        container.runAction(.repeatForever(.rotateBy(x: 0, y: 0, z: CGFloat.pi * 2, duration: 18)))
-        return container
-    }
-
-    private func applySilverMaterial(to node: SCNNode) {
-        if let geometry = node.geometry {
-            configureMaterials(of: geometry)
-        }
-
-        node.enumerateChildNodes { child, _ in
-            guard let geometry = child.geometry else { return }
-            configureMaterials(of: geometry)
+        .onChange(of: appState.selectedLevel.rawValue) { _ in
+            syncPreview()
         }
     }
 
-    private func configureMaterials(of geometry: SCNGeometry) {
-        for material in geometry.materials {
-            material.lightingModel = .physicallyBased
-            material.diffuse.contents = UIColor.white
-            material.metalness.contents = 1.0
-            if let roughnessImage = Self.chromeRoughnessImage {
-                material.roughness.contents = roughnessImage
-            } else {
-                material.roughness.contents = 0.16
-            }
-            if let normalImage = Self.chromeNormalImage {
-                material.normal.contents = normalImage
-                material.normal.intensity = 0.35
-            }
-            material.ambient.contents = UIColor(white: 0.08, alpha: 1.0)
-            material.emission.contents = UIColor.black
-            material.specular.contents = UIColor.white
-            material.shininess = 1.0
-            material.fresnelExponent = 0.40
-            material.multiply.contents = UIColor.white
-            material.isDoubleSided = true
-        }
-    }
-
-    private static func materialTextureImage(named textureName: String) -> UIImage? {
-        guard let url = materialTextureURL(named: textureName) else { return nil }
-        return UIImage(contentsOfFile: url.path)
-    }
-
-    private static func materialTextureURL(named textureName: String) -> URL? {
-        if let directURL = Bundle.main.url(forResource: textureName, withExtension: "png") {
-            return directURL
-        }
-
-        guard
-            let resourceURL = Bundle.main.resourceURL,
-            let enumerator = FileManager.default.enumerator(
-                at: resourceURL,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            )
-        else {
-            return nil
-        }
-
-        let targetFileName = "\(textureName).png"
-        for case let candidate as URL in enumerator where candidate.lastPathComponent == targetFileName {
-            return candidate
-        }
-        return nil
+    private func syncPreview() {
+        previewEngineWrapper.setVehicleMeshName(shipName)
+        previewEngineWrapper.setLevel(Int32(appState.selectedLevel.rawValue))
     }
 }

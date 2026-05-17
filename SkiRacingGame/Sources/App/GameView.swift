@@ -140,6 +140,8 @@ struct GameView: View {
     @State private var nearMissVisible = false
     @State private var nearMissOpacity: Double = 0
     @State private var wasGrazing = false
+    @State private var comboMultiplier: Float = 1.0
+    @State private var comboTimer: Float = 0.0
     @State private var didBankRunCoins = false
     @State private var deathSequenceStarted = false
     @State private var controlsEnabled = false
@@ -229,10 +231,14 @@ struct GameView: View {
             runCoins = Int(appState.engine.getCoins())
             health = Int(appState.engine.getVehicleHealth())
             let nowGrazing = appState.engine.getIsGrazing()
+            let engineNearMissCount = Int(appState.engine.getNearMissCount())
+            let previousNearMissCount = nearMissCount
+            comboMultiplier = appState.engine.getComboMultiplier()
+            comboTimer = appState.engine.getComboTimer()
             timeElapsed = TimeInterval(appState.engine.getTotalTime())
             
-            if wasGrazing && !nowGrazing {
-                nearMissCount += 1
+            if engineNearMissCount > previousNearMissCount {
+                nearMissCount = engineNearMissCount
                 nearMissVisible = true
                 withAnimation(.easeIn(duration: 0.05)) {
                     nearMissOpacity = 1.0
@@ -245,6 +251,8 @@ struct GameView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                     nearMissVisible = false
                 }
+            } else {
+                nearMissCount = engineNearMissCount
             }
             wasGrazing = nowGrazing
             isGrazing = nowGrazing
@@ -353,6 +361,20 @@ struct GameView: View {
                 glow: Color(red: 0.18, green: 0.70, blue: 1.0)
             )
 
+            if comboMultiplier > 1.05 || comboTimer > 0 {
+                HStack(spacing: 8) {
+                    Text("COMBO")
+                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                        .foregroundColor(Color(red: 0.38, green: 0.96, blue: 1.0).opacity(0.86))
+                        .tracking(1.4)
+                    Text(String(format: "x%.1f", comboMultiplier))
+                        .font(.system(size: 13, weight: .black, design: .monospaced))
+                        .foregroundColor(.white)
+                        .shadow(color: .cyan.opacity(0.65), radius: 6)
+                }
+                .transition(.opacity)
+            }
+
             Text("\(score)")
                 .font(.system(size: 18, weight: .black, design: .monospaced))
                 .foregroundColor(.white.opacity(0.94))
@@ -411,6 +433,8 @@ struct GameView: View {
         nearMissVisible = false
         nearMissOpacity = 0
         wasGrazing = false
+        comboMultiplier = 1.0
+        comboTimer = 0
         nearMissCount = 0
         didBankRunCoins = false
         deathSequenceStarted = false

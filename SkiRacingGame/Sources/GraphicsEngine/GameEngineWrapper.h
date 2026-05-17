@@ -23,6 +23,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (float)getTotalTime;
 - (float)getOverdriveCharge;
 - (bool)getIsGrazing;
+- (int)getNearMissCount;
+- (float)getComboMultiplier;
+- (float)getComboTimer;
 - (float)getChaserDistance;
 
 // The C++ engine accessor for the renderer

@@ -51,17 +51,26 @@ private:
         float timer;
     };
 
+    struct PulseObstacleRecord {
+        int centerGridX;
+        int firstRowGridZ;
+        float timer;
+    };
+
     std::vector<CollisionCellRecord> collisionCells;
     std::vector<BoostPadRecord> boostPads;
     std::vector<JumpPadRecord> jumpPads;
     std::vector<FlattenCellRecord> flattenedCells;
     std::vector<GateRecord> gates;
     std::vector<NearMissRecord> nearMissCells;
+    std::vector<PulseObstacleRecord> pulseObstacles;
     uint32_t boostRandomState;
     float nextBoostSpawnTime;
     float nextJumpPadSpawnTime;
     float nextSkillCollectibleSpawnTime;
     float nextGateSpawnTime;
+    float nextPulseObstacleSpawnTime;
+    float nextRouteForkSpawnTime;
 
     void updateEffectState(float deltaTime);
     void syncVisibleGridState(Track& track, float renderOriginZ);
@@ -70,18 +79,25 @@ private:
     void scheduleJumpPads(Vehicle& vehicle, Track& track, float totalTime, float currentSpeed);
     void scheduleSkillCollectibles(Vehicle& vehicle, Track& track, float totalTime, float currentSpeed);
     void scheduleGates(Vehicle& vehicle, Track& track, float totalTime, float currentSpeed);
+    void schedulePulseObstacles(Vehicle& vehicle, Track& track, float totalTime, float currentSpeed);
+    void scheduleRouteForks(Vehicle& vehicle, Track& track, float totalTime, float currentSpeed);
     void collectJumpPads(Vehicle& vehicle, float previousX, float previousZ);
     void collectSkillCollectibles(Vehicle& vehicle, Track& track);
+    void collectRouteOrbs(Vehicle& vehicle, Track& track);
     void triggerFlattenCharge(const Vehicle& vehicle);
     void addComboEvent(Vehicle& vehicle, int baseScore, float comboTimeBonus);
     bool addNearMissCell(int gridX, int gridZ);
     bool isFlattenedCell(float worldX, float worldZ) const;
     bool getGateCell(float worldX, float worldZ) const;
+    bool getPulseObstacleCell(float worldX, float worldZ, float& phase) const;
+    bool getPulseObstacleCell(float worldX, float worldZ) const;
     bool gatePatternBlocksCell(int pattern, int localCol, int localRow) const;
     bool findBoostPadPlacement(const Track& track, float targetWorldZ, BoostPadRecord& outPad) const;
     bool isBoostPadPlacementValid(const Track& track, int centerGridX, int firstRowGridZ) const;
     bool findJumpPadPlacement(const Track& track, float targetWorldZ, JumpPadRecord& outPad) const;
     bool isJumpPadPlacementValid(const Track& track, int firstGridX, int firstRowGridZ) const;
+    bool findPulseObstaclePlacement(const Track& track, float targetWorldZ, PulseObstacleRecord& outPulse) const;
+    bool isPulseObstaclePlacementValid(const Track& track, int centerGridX, int firstRowGridZ) const;
     bool getBoostPadCell(float worldX, float worldZ, bool& isDark) const;
     bool getJumpPadCell(float worldX, float worldZ, float& springPhase) const;
     bool getJumpPadCell(float worldX, float worldZ) const;

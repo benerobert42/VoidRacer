@@ -35,6 +35,10 @@ struct Uniforms {
     float riverFrequencyScale;
     float riverCurveScale;
     float jumpTimer;
+    float forkStartZ;
+    float forkEndZ;
+    float forkOffsetX;
+    int forkActive;
 };
 
 // Must match GridCellGPU in Shaders.metal
@@ -481,7 +485,8 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         float previewZ = -(float)_elapsedTime * previewSpeed;
         renderVehiclePosition = simd_make_float3(0.0f, vehicle.position.y, previewZ);
     }
-    simd_float3 visibleVehiclePosition = renderVehiclePosition + simd_make_float3(0.0f, self.previewMode ? 0.0f : self.vehicleVerticalOffset, 0.0f);
+    float previewVehicleLift = (self.previewMode && self.storeGridPalette) ? self.vehicleVerticalOffset : 0.0f;
+    simd_float3 visibleVehiclePosition = renderVehiclePosition + simd_make_float3(0.0f, self.previewMode ? previewVehicleLift : self.vehicleVerticalOffset, 0.0f);
     
     // ── Camera ──────────────────────────────────────────────────────
     simd_float3 desiredCamPos;
@@ -573,6 +578,10 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
         u.riverFrequencyScale = track.riverFrequencyScale;
         u.riverCurveScale = track.riverCurveScale;
         u.jumpTimer = vehicle.elevateTimer;
+        u.forkStartZ = track.forkStartZ;
+        u.forkEndZ = track.forkEndZ;
+        u.forkOffsetX = track.forkOffsetX;
+        u.forkActive = track.forkActive;
         
         [enc setVertexBytes:&u length:sizeof(u) atIndex:1];
         [enc setFragmentBytes:&u length:sizeof(u) atIndex:1];
@@ -668,6 +677,22 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
             matrix_float4x4 collectibleScale = matrix_scale(simd_make_float3(collectibleCoreSize, collectibleCoreSize, collectibleCoreSize));
             draw(_rockMesh, simd_mul(collectibleBase, silhouetteScale), simd_make_float3(0.0f, 0.0f, 0.0f), nil, 0, 1, 4);
             draw(_rockMesh, simd_mul(collectibleBase, collectibleScale), levelLightObjectColor(levelType), nil, 0, 1, 8);
+        }
+
+        for (const auto& orb : track.routeOrbs) {
+            if (orb.collected) continue;
+            if (orb.position.z > renderVehiclePosition.z + 45.0f) continue;
+            if (orb.position.z < renderVehiclePosition.z - 290.0f) continue;
+
+            float pulse = 0.86f + 0.14f * sinf((float)_elapsedTime * 8.5f + orb.position.z * 0.035f);
+            float bob = sinf((float)_elapsedTime * 5.2f + orb.position.z * 0.04f) * 2.0f;
+            simd_float3 pos = orb.position + simd_make_float3(0.0f, bob, 0.0f);
+            matrix_float4x4 orbBase = matrix_translation(pos);
+            matrix_float4x4 orbShellScale = matrix_scale(simd_make_float3(11.0f, 11.0f, 11.0f));
+            matrix_float4x4 orbScale = matrix_scale(simd_make_float3(6.4f * pulse, 6.4f * pulse, 6.4f * pulse));
+            simd_float3 orbColor = levelLightObjectColor(levelType) * 1.85f + simd_make_float3(0.55f, 0.62f, 0.48f);
+            draw(_rockMesh, simd_mul(orbBase, orbShellScale), simd_make_float3(0.0f, 0.0f, 0.0f), nil, 0, 1, 4);
+            draw(_rockMesh, simd_mul(orbBase, orbScale), orbColor, nil, 0, 1, 8);
         }
 
         [enc setRenderPipelineState:_pipelineState];
@@ -782,7 +807,8 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
             yaw = atan2f(visualLateralSpeed, vehicle.velocity.z);
         }
         
-        matrix_float4x4 vehScale = matrix_scale(simd_make_float3(0.8f, 0.8f, 0.8f));
+        float vehicleScaleValue = (self.previewMode && self.storeGridPalette) ? 0.98f : 0.8f;
+        matrix_float4x4 vehScale = matrix_scale(simd_make_float3(vehicleScaleValue, vehicleScaleValue, vehicleScaleValue));
         matrix_float4x4 vehRotY = matrix_rotation_y(yaw);
         matrix_float4x4 vehRotZ = (self.previewMode && self.storeGridPalette)
             ? matrix_rotation_z((float)_elapsedTime * 0.42f)

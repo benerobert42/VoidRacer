@@ -16,6 +16,13 @@ struct SkillCollectible {
     bool collected;
 };
 
+struct RouteOrb {
+    simd_float3 position;
+    float radius;
+    int scoreValue;
+    bool collected;
+};
+
 // Reserved grid-cell flags. The current baseline terrain renderer keeps all cells opaque.
 enum class CellFlags : uint16_t {
     None          = 0,
@@ -29,7 +36,9 @@ enum class CellFlags : uint16_t {
     FlattenPad    = 1 << 7,
     Collided      = 1 << 8,
     BoostPadDark  = 1 << 9,
-    GateBlock     = 1 << 10
+    GateBlock     = 1 << 10,
+    PulseObstacle = 1 << 11,
+    NearMissSpark = 1 << 12
 };
 
 struct GridCell {
@@ -57,6 +66,7 @@ class Track {
 public:
     std::vector<Obstacle> obstacles;
     std::vector<SkillCollectible> skillCollectibles;
+    std::vector<RouteOrb> routeOrbs;
     TerrainGrid grid;
     float finishLineZ;
     float slopeAngle; // in radians
@@ -64,6 +74,10 @@ public:
     float riverSecondaryPhase;
     float riverFrequencyScale;
     float riverCurveScale;
+    float forkStartZ;
+    float forkEndZ;
+    float forkOffsetX;
+    int forkActive;
     
     Track();
     void generateTrack();

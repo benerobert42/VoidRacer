@@ -18,6 +18,10 @@ Track::Track() {
     riverSecondaryPhase = randomRange(rng, 0.0f, 2.0f * (float)M_PI);
     riverFrequencyScale = randomRange(rng, 0.90f, 1.14f);
     riverCurveScale = randomRange(rng, 0.86f, 1.05f);
+    forkStartZ = 0.0f;
+    forkEndZ = 0.0f;
+    forkOffsetX = 0.0f;
+    forkActive = 0;
     memset(&grid, 0, sizeof(grid));
     grid.originZ = 0.0f;
     generateTrack();
@@ -26,6 +30,7 @@ Track::Track() {
 void Track::generateTrack() {
     obstacles.clear();
     skillCollectibles.clear();
+    routeOrbs.clear();
     finishLineZ = -2000.0f;
     
     // Initialize the terrain grid cells

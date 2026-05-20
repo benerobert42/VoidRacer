@@ -169,6 +169,39 @@ public:
         return fabsf(gridX - getRiverCenterX(gridZ, primaryPhase, secondaryPhase, frequencyScale, curveScale));
     }
 
+    static float forkEnvelope(float gridZ, float forkStartZ, float forkEndZ, int forkActive) {
+        if (forkActive == 0 || forkStartZ <= forkEndZ) {
+            return 0.0f;
+        }
+        float segmentT = clamp((forkStartZ - gridZ) / (forkStartZ - forkEndZ), 0.0f, 1.0f);
+        float enter = math_smoothstep(0.02f, 0.22f, segmentT);
+        float exit = 1.0f - math_smoothstep(0.78f, 0.98f, segmentT);
+        return enter * exit;
+    }
+
+    static float getDistFromRiver(float gridX,
+                                  float gridZ,
+                                  float primaryPhase,
+                                  float secondaryPhase,
+                                  float frequencyScale,
+                                  float curveScale,
+                                  float forkStartZ,
+                                  float forkEndZ,
+                                  float forkOffsetX,
+                                  int forkActive) {
+        float mainCenter = getRiverCenterX(gridZ, primaryPhase, secondaryPhase, frequencyScale, curveScale);
+        float mainDistance = fabsf(gridX - mainCenter);
+        float forkAmount = forkEnvelope(gridZ, forkStartZ, forkEndZ, forkActive);
+        if (forkAmount <= 0.001f) {
+            return mainDistance;
+        }
+
+        // Keep the branch inside the central playable band so both riverbeds stay on camera.
+        float forkCenter = clamp(mainCenter + forkOffsetX * forkAmount, -55.0f, 55.0f);
+        float forkDistance = fabsf(gridX - forkCenter) * 1.65f; // narrower branch
+        return fminf(mainDistance, forkDistance);
+    }
+
     static float getDistFromRiver(float gridX, float gridZ) {
         return fabsf(gridX - getRiverCenterX(gridZ));
     }
@@ -180,7 +213,11 @@ public:
                                   float primaryPhase,
                                   float secondaryPhase,
                                   float frequencyScale,
-                                  float curveScale) {
+                                  float curveScale,
+                                  float forkStartZ,
+                                  float forkEndZ,
+                                  float forkOffsetX,
+                                  int forkActive) {
         float colSpacing = 5.0f;
         float gridX = floorf((worldX + colSpacing*0.5f) / colSpacing) * colSpacing;
         float gridZ = floorf((worldZ + colSpacing*0.5f) / colSpacing) * colSpacing;
@@ -195,15 +232,58 @@ public:
         float h_river = fbm_simple(tcx, tcy, 2) * 2.5f - 17.5f; // approx -17.5 to -12.5 height
 
         // Blend them based on distance from the river centerline
-        float distFromCenter = getDistFromRiver(gridX, gridZ, primaryPhase, secondaryPhase, frequencyScale, curveScale);
+        float distFromCenter = getDistFromRiver(gridX,
+                                                gridZ,
+                                                primaryPhase,
+                                                secondaryPhase,
+                                                frequencyScale,
+                                                curveScale,
+                                                forkStartZ,
+                                                forkEndZ,
+                                                forkOffsetX,
+                                                forkActive);
         float pathMix = math_smoothstep(15.0f, 40.0f, distFromCenter);
 
         float finalHeight = mix(h_river, h_mountain, pathMix);
+        float forkAmount = forkEnvelope(gridZ, forkStartZ, forkEndZ, forkActive);
+        if (forkAmount > 0.55f) {
+            float mainCenter = getRiverCenterX(gridZ, primaryPhase, secondaryPhase, frequencyScale, curveScale);
+            float forkCenter = clamp(mainCenter + forkOffsetX * forkAmount, -55.0f, 55.0f);
+            float leftCenter = fminf(mainCenter, forkCenter);
+            float rightCenter = fmaxf(mainCenter, forkCenter);
+            float separation = rightCenter - leftCenter;
+            float insideForkDivider = math_smoothstep(leftCenter + 14.0f, leftCenter + 22.0f, gridX) *
+                                      (1.0f - math_smoothstep(rightCenter - 22.0f, rightCenter - 14.0f, gridX));
+            if (separation >= 25.0f && insideForkDivider > 0.05f) {
+                float dividerHeight = 32.0f + fbm_simple(tcx + 31.0f, tcy - 17.0f, 2) * 12.0f;
+                finalHeight = fmaxf(finalHeight, dividerHeight * insideForkDivider);
+            }
+        }
         
         // Removed hard clamping to allow noisy terrain even in the pure riverbed
 
         // Quantize height to distinct vertical steps for the voxel look
         return floorf(finalHeight * 0.5f) * 2.0f;
+    }
+
+    static float getTerrainHeight(float worldX,
+                                  float worldZ,
+                                  float slopeAngle,
+                                  float primaryPhase,
+                                  float secondaryPhase,
+                                  float frequencyScale,
+                                  float curveScale) {
+        return getTerrainHeight(worldX,
+                                worldZ,
+                                slopeAngle,
+                                primaryPhase,
+                                secondaryPhase,
+                                frequencyScale,
+                                curveScale,
+                                0.0f,
+                                0.0f,
+                                0.0f,
+                                0);
     }
 
     static float getTerrainHeight(float worldX, float worldZ, float slopeAngle) {

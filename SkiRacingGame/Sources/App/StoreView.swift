@@ -42,23 +42,7 @@ struct StoreView: View {
     }
 
     private var storeBackground: some View {
-        TerrainPreviewView(
-            level: appState.selectedLevel,
-            scrollSpeed: 12,
-            preferredFramesPerSecond: 30,
-            storeGridPalette: true
-        )
-        .overlay(
-            LinearGradient(
-                colors: [
-                    Color.black.opacity(0.12),
-                    Color.black.opacity(0.02),
-                    Color.black.opacity(0.34)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
+        Color.black
         .ignoresSafeArea()
     }
 }
@@ -160,45 +144,49 @@ private struct ShipStorePage: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-            Spacer(minLength: StoreSafeArea.topInset(for: geometry) + 48)
-
-            titleBlock
-
+        ZStack {
             ShipPreviewView(shipName: ship.rawValue)
-                .padding(.horizontal, -42)
-                .padding(.vertical, -18)
-                .offset(y: 30)
-                .frame(maxWidth: .infinity)
-                .frame(height: previewHeight)
-                .contentShape(Rectangle())
+                .ignoresSafeArea()
 
-            VStack(spacing: 14) {
-                statLines
-                priceAndAction
-            }
-            .padding(18)
-            .background(
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .fill(Color.white.opacity(0.055))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 26, style: .continuous)
-                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                    )
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.32),
+                    Color.black.opacity(0.03),
+                    Color.black.opacity(0.54)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
             )
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
 
-            StorePageIndicator(currentShip: ship)
+            VStack(spacing: 16) {
+                Spacer(minLength: StoreSafeArea.topInset(for: geometry) + 48)
 
-            Spacer(minLength: StoreSafeArea.bottomInset(for: geometry) + 14)
+                titleBlock
+
+                Spacer(minLength: 0)
+
+                VStack(spacing: 14) {
+                    statLines
+                    priceAndAction
+                }
+                .padding(18)
+                .background(
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .fill(Color.black.opacity(0.42))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                                .stroke(StorePalette.neonCyan.opacity(0.24), lineWidth: 1)
+                        )
+                )
+
+                StorePageIndicator(currentShip: ship)
+
+                Spacer(minLength: StoreSafeArea.bottomInset(for: geometry) + 14)
+            }
+            .padding(.horizontal, 22)
         }
-        .padding(.horizontal, 22)
-    }
-
-    private var previewHeight: CGFloat {
-        let safeHeight = geometry.size.height
-            - StoreSafeArea.topInset(for: geometry)
-            - StoreSafeArea.bottomInset(for: geometry)
-        return min(max(safeHeight * 0.62, 420), 620)
     }
 
     private var titleBlock: some View {
@@ -573,6 +561,7 @@ struct ShipPreviewView: View {
             showObstacles: false,
             showChaser: false,
             storeGridPalette: true,
+            shipVerticalOffset: 24,
             preferredFramesPerSecond: 30
         )
         .id(shipName)

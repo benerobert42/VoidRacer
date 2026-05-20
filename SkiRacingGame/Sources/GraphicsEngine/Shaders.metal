@@ -54,6 +54,10 @@ struct Uniforms {
     float riverFrequencyScale;
     float riverCurveScale;
     float jumpTimer;
+    float forkStartZ;
+    float forkEndZ;
+    float forkOffsetX;
+    int forkActive;
 };
 
 // Per-instance grid cell state passed from CPU
@@ -77,12 +81,11 @@ float3 hsv2rgb(float3 c) {
 
 // ── Terrain Logic Helpers ────────────────────────────────────────
 
-float getDistFromRiverMetal(float gridX,
-                            float gridZ,
-                            float primaryPhase,
-                            float secondaryPhase,
-                            float frequencyScale,
-                            float curveScale) {
+float getRiverCenterXMetal(float gridZ,
+                           float primaryPhase,
+                           float secondaryPhase,
+                           float frequencyScale,
+                           float curveScale) {
     const float kRiverPlayableHalfWidth = 100.0;
     const float kRiverTransitionWidth = 40.0;
     const float kRiverCenterLimit = kRiverPlayableHalfWidth - kRiverTransitionWidth;
@@ -91,16 +94,42 @@ float getDistFromRiverMetal(float gridX,
     float riverBaseX = (sin(gridZ * RIVER_PRIMARY_FREQUENCY * clampedFrequencyScale + primaryPhase) * (31.0 * clampedCurveScale) +
                         sin(gridZ * RIVER_SECONDARY_FREQUENCY * clampedFrequencyScale + secondaryPhase) * (16.0 * clampedCurveScale));
 
-    return abs(gridX - clamp(riverBaseX, -kRiverCenterLimit, kRiverCenterLimit));
+    return clamp(riverBaseX, -kRiverCenterLimit, kRiverCenterLimit);
+}
+
+float forkEnvelopeMetal(float gridZ, constant Uniforms &uniforms) {
+    if (uniforms.forkActive == 0 || uniforms.forkStartZ <= uniforms.forkEndZ) {
+        return 0.0;
+    }
+    float segmentT = clamp((uniforms.forkStartZ - gridZ) / (uniforms.forkStartZ - uniforms.forkEndZ), 0.0, 1.0);
+    float enter = smoothstep(0.02, 0.22, segmentT);
+    float exit = 1.0 - smoothstep(0.78, 0.98, segmentT);
+    return enter * exit;
+}
+
+float getDistFromRiverMetal(float gridX,
+                            float gridZ,
+                            float primaryPhase,
+                            float secondaryPhase,
+                            float frequencyScale,
+                            float curveScale) {
+    return abs(gridX - getRiverCenterXMetal(gridZ, primaryPhase, secondaryPhase, frequencyScale, curveScale));
 }
 
 float getDistFromRiverMetal(float gridX, float gridZ, constant Uniforms &uniforms) {
-    return getDistFromRiverMetal(gridX,
-                                 gridZ,
-                                 uniforms.riverPrimaryPhase,
-                                 uniforms.riverSecondaryPhase,
-                                 uniforms.riverFrequencyScale,
-                                 uniforms.riverCurveScale);
+    float mainCenter = getRiverCenterXMetal(gridZ,
+                                            uniforms.riverPrimaryPhase,
+                                            uniforms.riverSecondaryPhase,
+                                            uniforms.riverFrequencyScale,
+                                            uniforms.riverCurveScale);
+    float mainDistance = abs(gridX - mainCenter);
+    float forkAmount = forkEnvelopeMetal(gridZ, uniforms);
+    if (forkAmount <= 0.001) {
+        return mainDistance;
+    }
+    float forkCenter = clamp(mainCenter + uniforms.forkOffsetX * forkAmount, -55.0, 55.0);
+    float forkDistance = abs(gridX - forkCenter) * 1.65;
+    return min(mainDistance, forkDistance);
 }
 
 // Improved hash — better distribution, less pattern
@@ -240,6 +269,24 @@ float terrainHeight(float2 xz, constant Uniforms &uniforms) {
     float pathMix = smoothstep(15.0, 40.0, distFromCenter);
     
     float finalHeight = mix(h_river, h_mountain, pathMix);
+    float forkAmount = forkEnvelopeMetal(gridZ, uniforms);
+    if (forkAmount > 0.55) {
+        float mainCenter = getRiverCenterXMetal(gridZ,
+                                                uniforms.riverPrimaryPhase,
+                                                uniforms.riverSecondaryPhase,
+                                                uniforms.riverFrequencyScale,
+                                                uniforms.riverCurveScale);
+        float forkCenter = clamp(mainCenter + uniforms.forkOffsetX * forkAmount, -55.0, 55.0);
+        float leftCenter = min(mainCenter, forkCenter);
+        float rightCenter = max(mainCenter, forkCenter);
+        float separation = rightCenter - leftCenter;
+        float insideForkDivider = smoothstep(leftCenter + 14.0, leftCenter + 22.0, gridX) *
+                                  (1.0 - smoothstep(rightCenter - 22.0, rightCenter - 14.0, gridX));
+        if (separation >= 25.0 && insideForkDivider > 0.05) {
+            float dividerHeight = 32.0 + fbm_simple(tc + float2(31.0, -17.0), 2) * 12.0;
+            finalHeight = max(finalHeight, dividerHeight * insideForkDivider);
+        }
+    }
     
     // Quantize height blocks (stair step effect)
     return floor(finalHeight * 0.5) * 2.0;
@@ -281,6 +328,11 @@ vertex VertexOut vertex_main(VertexIn in [[stage_in]],
         }
         if ((cell.flags & 1024u) != 0u && !vertexFlattenedCell) {
             h = max(h, 24.0);
+        }
+        if ((cell.flags & 2048u) != 0u && !vertexFlattenedCell) {
+            float pulsePhase = clamp(cell.effectValue, 0.0, 1.0);
+            float pulseLift = smoothstep(0.40, 0.56, pulsePhase) * (1.0 - smoothstep(0.78, 1.0, pulsePhase));
+            h = mix(h, max(h, 24.0), pulseLift);
         }
         
         float4 worldPos;
@@ -790,18 +842,32 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         bool isBoostPadDark = (in.cellFlags & 512u) != 0u;
         bool isJumpPad = (in.cellFlags & 64u) != 0u;
         bool isFlattenedCell = (in.cellFlags & 128u) != 0u;
-        bool isGateBlock = (in.cellFlags & 1024u) != 0u;
+        bool isPulseObstacle = (in.cellFlags & 2048u) != 0u;
+        bool isNearMissSpark = (in.cellFlags & 4096u) != 0u;
+        float pulsePhase = clamp(in.effectValue, 0.0, 1.0);
+        float pulseWarning = (isPulseObstacle ? 1.0 : 0.0) *
+            smoothstep(0.02, 0.16, pulsePhase) *
+            (1.0 - smoothstep(0.36, 0.52, pulsePhase));
+        float pulseLift = (isPulseObstacle ? 1.0 : 0.0) *
+            smoothstep(0.40, 0.56, pulsePhase) *
+            (1.0 - smoothstep(0.78, 1.0, pulsePhase));
         // Single albedo for every terrain face. Hit feedback only overrides it temporarily.
         float3 hitColor = mix(float3(1.0, 0.02, 0.0), float3(0.0, 0.36, 1.0), boostAmount);
         float storeGridMask = uniforms.renderStyle == 7 ? 1.0 : 0.0;
         float moodStrength = clamp(uniforms.visualModifierIntensity, 0.0, 0.95) * (1.0 - storeGridMask);
         float3 moodAccent = visualMoodAccent(keyTint, glowTint, uniforms.visualMoodStyle);
         float3 terrainBase = mix(levelTerrainBaseColor(uniforms.levelType), float3(0.012, 0.030, 0.070), storeGridMask);
+        float riverDistanceForShade = getDistFromRiverMetal(in.cellCenterXZ.x, in.cellCenterXZ.y, uniforms);
+        float riverbedMaskForShade = 1.0 - smoothstep(13.0, 34.0, riverDistanceForShade);
         float3 albedo = mix(terrainBase, hitColor, hitMask);
+        float passableNonRiverColumn = (1.0 - riverbedMaskForShade) * (1.0 - smoothstep(3.5, 8.5, in.texCoord.y));
+        passableNonRiverColumn *= (1.0 - hitMask) * (1.0 - (isBoostPad ? 1.0 : 0.0)) * (1.0 - (isJumpPad ? 1.0 : 0.0));
+        float3 passableColumnColor = mix(terrainBase, levelLightObjectColor(uniforms.levelType), 0.68) * 0.76;
+        albedo = mix(albedo, passableColumnColor, passableNonRiverColumn);
         float3 boostPadColor = isBoostPadDark ? float3(0.01, 0.01, 0.012) : float3(0.96, 0.96, 0.92);
         albedo = mix(albedo, boostPadColor, topMask * (isBoostPad ? 1.0 : 0.0));
         albedo = mix(albedo, levelLightObjectColor(uniforms.levelType), isJumpPad ? 0.96 : 0.0);
-        albedo = mix(albedo, levelTerrainBaseColor(uniforms.levelType) * 1.24 + levelKeyTint(uniforms.levelType) * 0.16, isGateBlock ? 0.72 : 0.0);
+        albedo = mix(albedo, mix(terrainBase, levelLightObjectColor(uniforms.levelType), 0.62), saturate(pulseWarning * 0.58 + pulseLift * 0.34));
         albedo = mix(albedo, float3(0.18, 0.02, 0.025), isFlattenedCell ? 0.72 : 0.0);
         albedo = mix(albedo, float3(0.96, 0.97, 0.96), boostAmount * 0.92);
 
@@ -819,7 +885,7 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         float baseAO = sideMask * (1.0 - smoothstep(-0.50, -0.16, in.localPosition.y));
         finalColor *= 1.0 - baseAO * mix(0.34, 0.12, hitMask) * (1.0 - boostAmount * 0.65);
 
-        float riverDistance = getDistFromRiverMetal(in.cellCenterXZ.x, in.cellCenterXZ.y, uniforms);
+        float riverDistance = riverDistanceForShade;
         float riverbedMask = 1.0 - smoothstep(13.0, 34.0, riverDistance);
         float riverCenterMask = 1.0 - smoothstep(0.0, 17.0, riverDistance);
         float riverbedTopMask = topMask * riverbedMask * (1.0 - hitMask) * (1.0 - boostAmount * 0.55);
@@ -832,6 +898,11 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         float pathGlow = topMask * riverbedMask * pathFlow * (0.26 + riverCenterMask * 0.18 + boostAmount * 0.42) * pathModifier;
         float3 pathGlowColor = mix(mix(glowTint * 0.78 + keyTint * 0.22, moodAccent, moodStrength * 0.55), float3(0.18, 0.78, 1.0), storeGridMask);
         finalColor += pathGlowColor * pathGlow;
+        float shipWakeBehind = smoothstep(-6.0, 8.0, boostZDelta) * (1.0 - smoothstep(18.0, 76.0, boostZDelta));
+        float shipWakeLateral = 1.0 - smoothstep(4.0, 20.0, abs(in.cellCenterXZ.x - uniforms.vehiclePosition.x));
+        float shipWakePulse = 0.72 + 0.28 * sin(uniforms.time * 11.0 - in.cellCenterXZ.y * 0.18);
+        float shipWake = topMask * shipWakeBehind * shipWakeLateral * shipWakePulse * (1.0 - storeGridMask);
+        finalColor += mix(keyTint, glowTint, 0.62) * shipWake * 0.34;
         if (boostAmount > 0.001) {
             float trailPulse = 0.78 + 0.22 * sin(uniforms.time * 12.0 - in.cellCenterXZ.y * 0.15);
             float contactTrail = topMask * boostWake * trailPulse;
@@ -850,11 +921,21 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
             finalColor = mix(finalColor, springColor * (1.12 + pulse * 0.28), 0.72);
             finalColor += levelKeyTint(uniforms.levelType) * pulse * (topMask * 0.38 + sideMask * 0.20);
         }
+        if (isPulseObstacle) {
+            float pulseFlash = 0.72 + 0.28 * sin(uniforms.time * 18.0 + in.cellCenterXZ.x * 0.22);
+            float pulseAmount = saturate(pulseWarning * 0.85 + pulseLift * 0.70);
+            finalColor += levelLightObjectColor(uniforms.levelType) * pulseAmount * pulseFlash * (topMask * 0.90 + sideMask * 0.36);
+        }
+        if (isNearMissSpark) {
+            float sparkPulse = 0.62 + 0.38 * sin(uniforms.time * 32.0 + in.cellCenterXZ.x * 0.31 + in.cellCenterXZ.y * 0.19);
+            float3 sparkColor = mix(float3(1.0, 0.92, 0.55), levelGlowTint(uniforms.levelType), 0.42);
+            finalColor += sparkColor * sparkPulse * (topMask * 0.70 + sideMask * 0.52);
+        }
 
         // Emissive colored wireframe on visible faces only. Vertical thickness is
         // world-scaled so tall columns do not get a dark band near the top edge.
         float3 absPos = abs(in.localPosition);
-        float edgeThicknessBoost = 1.0 + moodStrength * 1.15 + clamp(uniforms.visualEdgeGlowBoost, 0.0, 0.9) * 0.72 + (isJumpPad ? 1.10 : 0.0) + (isGateBlock ? 0.55 : 0.0);
+        float edgeThicknessBoost = 1.0 + moodStrength * 1.15 + clamp(uniforms.visualEdgeGlowBoost, 0.0, 0.9) * 0.72 + (isJumpPad ? 1.10 : 0.0) + pulseWarning * 0.95 + pulseLift * 0.65 + (isNearMissSpark ? 0.65 : 0.0);
         float edgeWidth = 0.014 * edgeThicknessBoost;
         float edgeSoftness = 0.010 * (1.0 + moodStrength * 0.55);
         float edgeX = 1.0 - smoothstep(edgeWidth, edgeWidth + edgeSoftness, 0.5 - absPos.x);
@@ -875,11 +956,12 @@ fragment float4 fragment_main(VertexOut in [[stage_in]],
         edgeBaseColor = mix(edgeBaseColor, moodAccent, moodStrength * 0.72);
         float3 edgeColor = isBoostPad ? (isBoostPadDark ? float3(0.02, 0.02, 0.025) : mix(float3(1.0), glowTint, 0.32)) : edgeBaseColor;
         edgeColor = mix(edgeColor, float3(0.0, 0.0, 0.0), isJumpPad ? 1.0 : 0.0);
-        edgeColor = mix(edgeColor, levelKeyTint(uniforms.levelType), isGateBlock ? 0.70 : 0.0);
+        edgeColor = mix(edgeColor, levelLightObjectColor(uniforms.levelType), saturate(pulseWarning + pulseLift * 0.55));
+        edgeColor = mix(edgeColor, float3(1.0, 0.92, 0.48), isNearMissSpark ? 0.90 : 0.0);
         edgeColor = mix(edgeColor, float3(1.0, 0.06, 0.02), isFlattenedCell ? 0.78 : 0.0);
         edgeColor = mix(edgeColor, hitColor, hitMask);
         edgeColor = mix(edgeColor, float3(0.68, 0.92, 1.0), boostWake * 0.62 * (1.0 - hitMask));
-        float edgeBoost = (isBoostPad ? 1.45 : 0.70) + (isJumpPad ? 2.10 : 0.0) + (isGateBlock ? 1.15 : 0.0) + riverbedMask * 0.32 + topMask * 0.16 + boostWake * 0.42 + storeGridMask * 1.10 + clamp(uniforms.visualEdgeGlowBoost, 0.0, 1.0) + moodStrength * 0.72;
+        float edgeBoost = (isBoostPad ? 1.45 : 0.70) + (isJumpPad ? 2.10 : 0.0) + riverbedMask * 0.32 + topMask * 0.16 + boostWake * 0.42 + shipWake * 0.28 + pulseWarning * 1.35 + pulseLift * 0.85 + (isNearMissSpark ? 1.35 : 0.0) + storeGridMask * 1.10 + clamp(uniforms.visualEdgeGlowBoost, 0.0, 1.0) + moodStrength * 0.72;
         float edgeAmount = saturate(edgeMask);
         if (isJumpPad) {
             finalColor = mix(finalColor, float3(0.0), edgeAmount * 0.96);

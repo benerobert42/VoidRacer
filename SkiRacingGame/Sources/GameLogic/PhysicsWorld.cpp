@@ -40,6 +40,19 @@ constexpr float kGateIntervalSeconds = 11.5f;
 constexpr float kGateSpawnLeadTime = 1.95f;
 constexpr float kFirstGateSpawnTime = 8.0f;
 constexpr float kNearMissMemorySeconds = 1.1f;
+constexpr float kPulseObstacleIntervalSeconds = 17.0f;
+constexpr float kPulseObstacleSpawnLeadTime = 2.15f;
+constexpr float kFirstPulseObstacleSpawnTime = 12.0f;
+constexpr float kPulseObstacleLifetimeSeconds = 2.45f;
+constexpr float kPulseObstacleActiveStart = 0.48f;
+constexpr float kPulseObstacleActiveEnd = 0.88f;
+constexpr float kRouteForkIntervalSeconds = 25.0f;
+constexpr float kRouteForkSpawnLeadTime = 2.25f;
+constexpr float kFirstRouteForkSpawnTime = 14.0f;
+constexpr float kRouteForkLength = 270.0f;
+constexpr float kRouteForkOffset = 60.0f;
+constexpr float kRouteOrbRadius = 8.0f;
+constexpr int kRouteOrbScore = 420;
 constexpr int kCollisionBaseDamage = 6;
 constexpr int kCollisionBonusDamagePerExtraCell = 2;
 constexpr int kMaxCollisionDamage = 12;
@@ -50,8 +63,10 @@ constexpr int kJumpPadRows = 2;
 constexpr int kJumpPadCols = 2;
 constexpr int kFlattenRows = 40;
 constexpr int kFlattenHalfCols = 2;
-constexpr int kGateRows = 5;
+constexpr int kGateRows = 9;
 constexpr int kGateHalfCols = 6;
+constexpr int kPulseObstacleRows = 1;
+constexpr int kPulseObstacleHalfCols = 1;
 
 static int worldToGridCoord(float worldValue) {
     return (int)floorf((worldValue + TerrainGrid::COLUMN_SPACING * 0.5f) / TerrainGrid::COLUMN_SPACING);
@@ -59,6 +74,24 @@ static int worldToGridCoord(float worldValue) {
 
 static float gridToWorldCoord(int gridValue) {
     return (float)gridValue * TerrainGrid::COLUMN_SPACING;
+}
+
+static float terrainHeightForTrack(const Track& track, float worldX, float worldZ) {
+    return MathUtils::getTerrainHeight(worldX,
+                                       worldZ,
+                                       track.slopeAngle,
+                                       track.riverPrimaryPhase,
+                                       track.riverSecondaryPhase,
+                                       track.riverFrequencyScale,
+                                       track.riverCurveScale,
+                                       track.forkStartZ,
+                                       track.forkEndZ,
+                                       track.forkOffsetX,
+                                       track.forkActive);
+}
+
+static float forkEnvelopeForTrack(const Track& track, float worldZ) {
+    return MathUtils::forkEnvelope(worldZ, track.forkStartZ, track.forkEndZ, track.forkActive);
 }
 
 static bool boostPadPatternIsDark(int row, int col) {
@@ -88,6 +121,8 @@ PhysicsWorld::PhysicsWorld() {
     nextJumpPadSpawnTime = kFirstJumpPadSpawnTime;
     nextSkillCollectibleSpawnTime = kFirstSkillCollectibleSpawnTime;
     nextGateSpawnTime = kFirstGateSpawnTime;
+    nextPulseObstacleSpawnTime = kFirstPulseObstacleSpawnTime;
+    nextRouteForkSpawnTime = kFirstRouteForkSpawnTime;
 }
 
 void PhysicsWorld::updateEffectState(float deltaTime) {
@@ -113,6 +148,15 @@ void PhysicsWorld::updateEffectState(float deltaTime) {
         it->timer = fmaxf(0.0f, it->timer - deltaTime);
         if (it->timer <= 0.0f) {
             it = nearMissCells.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    for (auto it = pulseObstacles.begin(); it != pulseObstacles.end();) {
+        it->timer = fmaxf(0.0f, it->timer - deltaTime);
+        if (it->timer <= 0.0f) {
+            it = pulseObstacles.erase(it);
         } else {
             ++it;
         }
@@ -154,6 +198,11 @@ void PhysicsWorld::syncVisibleGridState(Track& track, float renderOriginZ) {
             if (getGateCell(worldX, worldZ)) {
                 cell.setFlag(CellFlags::GateBlock);
             }
+            float pulsePhase = 0.0f;
+            if (getPulseObstacleCell(worldX, worldZ, pulsePhase)) {
+                cell.setFlag(CellFlags::PulseObstacle);
+                cell.baseHeight = pulsePhase;
+            }
             float springPhase = 0.0f;
             if (getJumpPadCell(worldX, worldZ, springPhase)) {
                 cell.setFlag(CellFlags::ElevationPad);
@@ -173,6 +222,24 @@ void PhysicsWorld::syncVisibleGridState(Track& track, float renderOriginZ) {
         if (col >= 0 && col < TerrainGrid::WIDTH &&
             row >= 0 && row < TerrainGrid::LENGTH) {
             track.grid.cells[row * TerrainGrid::WIDTH + col].collisionEffectTimer = cellRecord.timer;
+        }
+    }
+
+    for (const auto& nearMiss : nearMissCells) {
+        float worldZ = gridToWorldCoord(nearMiss.gridZ);
+        if (worldZ < visibleMinZ || worldZ > renderOriginZ) {
+            continue;
+        }
+
+        int col = nearMiss.gridX + TerrainGrid::WIDTH / 2;
+        int row = (int)lroundf((renderOriginZ - worldZ) / colSpacing);
+        if (col >= 0 && col < TerrainGrid::WIDTH &&
+            row >= 0 && row < TerrainGrid::LENGTH) {
+            GridCell& cell = track.grid.cells[row * TerrainGrid::WIDTH + col];
+            cell.setFlag(CellFlags::NearMissSpark);
+            if (!cell.hasFlag(CellFlags::PulseObstacle) && !cell.hasFlag(CellFlags::ElevationPad)) {
+                cell.baseHeight = fmaxf(cell.baseHeight, nearMiss.timer / kNearMissMemorySeconds);
+            }
         }
     }
 }
@@ -226,26 +293,54 @@ bool PhysicsWorld::getJumpPadCell(float worldX, float worldZ) const {
     return getJumpPadCell(worldX, worldZ, unusedPhase);
 }
 
+bool PhysicsWorld::getPulseObstacleCell(float worldX, float worldZ, float& phase) const {
+    int gridX = worldToGridCoord(worldX);
+    int gridZ = worldToGridCoord(worldZ);
+
+    for (const auto& pulse : pulseObstacles) {
+        int localRow = pulse.firstRowGridZ - gridZ;
+        if (localRow < 0 || localRow >= kPulseObstacleRows) {
+            continue;
+        }
+
+        int localCol = gridX - pulse.centerGridX;
+        if (localCol < -kPulseObstacleHalfCols || localCol > kPulseObstacleHalfCols) {
+            continue;
+        }
+
+        phase = 1.0f - (pulse.timer / kPulseObstacleLifetimeSeconds);
+        phase = fmaxf(0.0f, fminf(1.0f, phase));
+        return true;
+    }
+
+    return false;
+}
+
+bool PhysicsWorld::getPulseObstacleCell(float worldX, float worldZ) const {
+    float unusedPhase = 0.0f;
+    return getPulseObstacleCell(worldX, worldZ, unusedPhase);
+}
+
 bool PhysicsWorld::gatePatternBlocksCell(int pattern, int localCol, int localRow) const {
     switch (pattern % 5) {
         case 0:
             // Center slit: classic endless-runner gate with a narrow center opening.
-            return localRow == 2 && abs(localCol) > 1;
+            return localRow == 4 && abs(localCol) > 1;
         case 1:
             // Offset slit: same read as center slit, shifted to force commitment.
-            return localRow == 2 && !(localCol >= 2 && localCol <= 4);
+            return localRow == 4 && !(localCol >= 2 && localCol <= 4);
         case 2:
-            // Slalom: alternating half walls across multiple rows.
-            if (localRow == 1) return localCol < 1;
-            if (localRow == 3) return localCol > -1;
+            // Slalom: alternating half walls, separated in depth and not overlapping in X.
+            if (localRow == 1) return localCol <= -2;
+            if (localRow == 6) return localCol >= 2;
             return false;
         case 3:
             // Double split: two lanes, blocked middle, readable choice.
-            return localRow == 2 && abs(localCol) <= 1;
+            return localRow == 4 && abs(localCol) <= 1;
         default:
             // Skill wall: obstacle cluster in the safest center path; jump/flatten helps,
             // but side escapes remain possible.
-            return localRow >= 1 && localRow <= 3 && abs(localCol) <= 2;
+            return localRow >= 3 && localRow <= 5 && abs(localCol) <= 2;
     }
 }
 
@@ -279,13 +374,7 @@ bool PhysicsWorld::isBoostPadPlacementValid(const Track& track, int centerGridX,
             int gridX = centerGridX + col - (kBoostPadCols / 2);
             float worldX = gridToWorldCoord(gridX);
             float worldZ = gridToWorldCoord(gridZ);
-            float height = MathUtils::getTerrainHeight(worldX,
-                                                       worldZ,
-                                                       track.slopeAngle,
-                                                       track.riverPrimaryPhase,
-                                                       track.riverSecondaryPhase,
-                                                       track.riverFrequencyScale,
-                                                       track.riverCurveScale);
+            float height = terrainHeightForTrack(track, worldX, worldZ);
             if (height > kFlightHeight - 5.0f) {
                 return false;
             }
@@ -320,13 +409,7 @@ bool PhysicsWorld::isJumpPadPlacementValid(const Track& track, int firstGridX, i
             int gridX = firstGridX + col;
             float worldX = gridToWorldCoord(gridX);
             float worldZ = gridToWorldCoord(gridZ);
-            float height = MathUtils::getTerrainHeight(worldX,
-                                                       worldZ,
-                                                       track.slopeAngle,
-                                                       track.riverPrimaryPhase,
-                                                       track.riverSecondaryPhase,
-                                                       track.riverFrequencyScale,
-                                                       track.riverCurveScale);
+            float height = terrainHeightForTrack(track, worldX, worldZ);
             if (height > kFlightHeight - 5.0f) {
                 return false;
             }
@@ -349,6 +432,41 @@ bool PhysicsWorld::findJumpPadPlacement(const Track& track, float targetWorldZ, 
         int firstGridX = worldToGridCoord(centerX - TerrainGrid::COLUMN_SPACING * 0.5f);
         if (isJumpPadPlacementValid(track, firstGridX, firstRowGridZ)) {
             outPad = { firstGridX, firstRowGridZ };
+            return true;
+        }
+    }
+    return false;
+}
+
+bool PhysicsWorld::isPulseObstaclePlacementValid(const Track& track, int centerGridX, int firstRowGridZ) const {
+    for (int row = 0; row < kPulseObstacleRows; row++) {
+        int gridZ = firstRowGridZ - row;
+        for (int col = -kPulseObstacleHalfCols; col <= kPulseObstacleHalfCols; col++) {
+            int gridX = centerGridX + col;
+            float worldX = gridToWorldCoord(gridX);
+            float worldZ = gridToWorldCoord(gridZ);
+            float height = terrainHeightForTrack(track, worldX, worldZ);
+            if (height > kFlightHeight - 5.0f) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool PhysicsWorld::findPulseObstaclePlacement(const Track& track, float targetWorldZ, PulseObstacleRecord& outPulse) const {
+    int targetGridZ = worldToGridCoord(targetWorldZ);
+    for (int offset = 0; offset < 34; offset++) {
+        int signedOffset = (offset % 2 == 0) ? -(offset / 2) : ((offset + 1) / 2);
+        int firstRowGridZ = targetGridZ + signedOffset;
+        float centerX = MathUtils::getRiverCenterX(gridToWorldCoord(firstRowGridZ),
+                                                   track.riverPrimaryPhase,
+                                                   track.riverSecondaryPhase,
+                                                   track.riverFrequencyScale,
+                                                   track.riverCurveScale);
+        int centerGridX = worldToGridCoord(centerX);
+        if (isPulseObstaclePlacementValid(track, centerGridX, firstRowGridZ)) {
+            outPulse = { centerGridX, firstRowGridZ, kPulseObstacleLifetimeSeconds };
             return true;
         }
     }
@@ -440,6 +558,94 @@ void PhysicsWorld::scheduleGates(Vehicle& vehicle, Track& track, float totalTime
     }
 }
 
+void PhysicsWorld::schedulePulseObstacles(Vehicle& vehicle, Track& track, float totalTime, float currentSpeed) {
+    while (totalTime >= nextPulseObstacleSpawnTime) {
+        PulseObstacleRecord pulse;
+        float targetWorldZ = vehicle.position.z - currentSpeed * kPulseObstacleSpawnLeadTime;
+        if (findPulseObstaclePlacement(track, targetWorldZ, pulse)) {
+            bool duplicate = false;
+            for (const auto& existing : pulseObstacles) {
+                if (abs(existing.firstRowGridZ - pulse.firstRowGridZ) < 8) {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (!duplicate) {
+                pulseObstacles.push_back(pulse);
+            }
+        }
+        nextPulseObstacleSpawnTime += kPulseObstacleIntervalSeconds;
+    }
+
+    for (auto it = pulseObstacles.begin(); it != pulseObstacles.end();) {
+        if (gridToWorldCoord(it->firstRowGridZ) > vehicle.position.z + 55.0f) {
+            it = pulseObstacles.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void PhysicsWorld::scheduleRouteForks(Vehicle& vehicle, Track& track, float totalTime, float currentSpeed) {
+    if (track.forkActive != 0 && vehicle.position.z < track.forkEndZ - 260.0f) {
+        track.forkActive = 0;
+        track.forkStartZ = 0.0f;
+        track.forkEndZ = 0.0f;
+        track.forkOffsetX = 0.0f;
+    }
+
+    while (totalTime >= nextRouteForkSpawnTime) {
+        if (track.forkActive == 0) {
+            float targetWorldZ = vehicle.position.z - currentSpeed * kRouteForkSpawnLeadTime;
+            float forkStartZ = gridToWorldCoord(worldToGridCoord(targetWorldZ + 55.0f));
+            float forkEndZ = forkStartZ - kRouteForkLength;
+            float middleZ = forkStartZ - kRouteForkLength * 0.52f;
+            float centerX = MathUtils::getRiverCenterX(middleZ,
+                                                       track.riverPrimaryPhase,
+                                                       track.riverSecondaryPhase,
+                                                       track.riverFrequencyScale,
+                                                       track.riverCurveScale);
+            float side = centerX > 8.0f ? -1.0f : 1.0f;
+            if (fabsf(centerX) <= 8.0f && nextBoostRandom01(boostRandomState) < 0.5f) {
+                side = -1.0f;
+            }
+
+            track.forkStartZ = forkStartZ;
+            track.forkEndZ = forkEndZ;
+            track.forkOffsetX = side * kRouteForkOffset;
+            track.forkActive = 1;
+
+            constexpr float orbFractions[] = {0.38f, 0.52f, 0.66f};
+            for (float fraction : orbFractions) {
+                float orbZ = forkStartZ - kRouteForkLength * fraction;
+                float forkAmount = forkEnvelopeForTrack(track, orbZ);
+                float mainCenter = MathUtils::getRiverCenterX(orbZ,
+                                                              track.riverPrimaryPhase,
+                                                              track.riverSecondaryPhase,
+                                                              track.riverFrequencyScale,
+                                                              track.riverCurveScale);
+                float orbX = MathUtils::clamp(mainCenter + track.forkOffsetX * forkAmount, -55.0f, 55.0f);
+                track.routeOrbs.push_back({
+                    simd_make_float3(orbX, kFlightHeight + 3.2f, gridToWorldCoord(worldToGridCoord(orbZ))),
+                    kRouteOrbRadius,
+                    kRouteOrbScore,
+                    false
+                });
+            }
+        }
+
+        nextRouteForkSpawnTime += kRouteForkIntervalSeconds;
+    }
+
+    for (auto it = track.routeOrbs.begin(); it != track.routeOrbs.end();) {
+        if (it->collected || it->position.z > vehicle.position.z + 45.0f) {
+            it = track.routeOrbs.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
 void PhysicsWorld::scheduleSkillCollectibles(Vehicle& vehicle, Track& track, float totalTime, float currentSpeed) {
     while (totalTime >= nextSkillCollectibleSpawnTime) {
         float targetWorldZ = vehicle.position.z - currentSpeed * kSkillCollectibleLeadTime;
@@ -463,6 +669,24 @@ void PhysicsWorld::scheduleSkillCollectibles(Vehicle& vehicle, Track& track, flo
             it = track.skillCollectibles.erase(it);
         } else {
             ++it;
+        }
+    }
+}
+
+void PhysicsWorld::collectRouteOrbs(Vehicle& vehicle, Track& track) {
+    for (auto& orb : track.routeOrbs) {
+        if (orb.collected) {
+            continue;
+        }
+
+        float dx = vehicle.position.x - orb.position.x;
+        float dz = vehicle.position.z - orb.position.z;
+        float radius = orb.radius + vehicle.hullRadius;
+        if ((dx * dx + dz * dz) <= radius * radius) {
+            orb.collected = true;
+            vehicle.impactShakeTimer = fmaxf(vehicle.impactShakeTimer, 0.035f);
+            vehicle.coins += 4;
+            addComboEvent(vehicle, orb.scoreValue, 1.2f);
         }
     }
 }
@@ -627,6 +851,8 @@ void PhysicsWorld::update(float deltaTime, Vehicle& vehicle, Track& track, float
     scheduleBoostPads(vehicle, track, totalTime, currentSpeed);
     scheduleJumpPads(vehicle, track, totalTime, currentSpeed);
     scheduleGates(vehicle, track, totalTime, currentSpeed);
+    schedulePulseObstacles(vehicle, track, totalTime, currentSpeed);
+    scheduleRouteForks(vehicle, track, totalTime, currentSpeed);
     scheduleSkillCollectibles(vehicle, track, totalTime, currentSpeed);
     
     bool boostPadDark = false;
@@ -663,6 +889,7 @@ void PhysicsWorld::update(float deltaTime, Vehicle& vehicle, Track& track, float
     vehicle.velocity.x = deltaX;
     collectJumpPads(vehicle, previousX, previousZ);
     collectSkillCollectibles(vehicle, track);
+    collectRouteOrbs(vehicle, track);
 
     float flightHeight = kFlightHeight;
     if (vehicle.elevateTimer > 0.0f) {
@@ -725,15 +952,14 @@ void PhysicsWorld::update(float deltaTime, Vehicle& vehicle, Track& track, float
 
     for (float gridZ = minGridZ; gridZ <= maxGridZ; gridZ += colSpacing) {
         for (float gridX = minGridX; gridX <= maxGridX; gridX += colSpacing) {
-            float colHeight = MathUtils::getTerrainHeight(gridX,
-                                                          gridZ,
-                                                          track.slopeAngle,
-                                                          track.riverPrimaryPhase,
-                                                          track.riverSecondaryPhase,
-                                                          track.riverFrequencyScale,
-                                                          track.riverCurveScale);
+            float colHeight = terrainHeightForTrack(track, gridX, gridZ);
             bool flattenedCell = isFlattenedCell(gridX, gridZ);
             bool gateCell = getGateCell(gridX, gridZ);
+            float pulsePhase = 0.0f;
+            bool pulseCell = getPulseObstacleCell(gridX, gridZ, pulsePhase);
+            bool pulseActive = pulseCell &&
+                               pulsePhase >= kPulseObstacleActiveStart &&
+                               pulsePhase <= kPulseObstacleActiveEnd;
             if (flattenedCell) {
                 colHeight = flightHeight - 8.0f;
             }
@@ -741,6 +967,9 @@ void PhysicsWorld::update(float deltaTime, Vehicle& vehicle, Track& track, float
                 colHeight = flightHeight - 8.0f;
             }
             if (gateCell && !flattenedCell) {
+                colHeight = fmaxf(colHeight, flightHeight + 18.0f);
+            }
+            if (pulseActive && !flattenedCell) {
                 colHeight = fmaxf(colHeight, flightHeight + 18.0f);
             }
             float cellMinX = gridX - colSpacing * 0.5f;

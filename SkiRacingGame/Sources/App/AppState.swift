@@ -4,6 +4,7 @@ enum AppScreen {
     case menu
     case levelSelect
     case store
+    case achievements
     case game
     case gameOver
 }
@@ -376,6 +377,10 @@ class AppState: ObservableObject {
     
     func openStore() {
         currentScreen = .store
+    }
+
+    func openAchievements() {
+        currentScreen = .achievements
     }
     
     func returnToMenu() {

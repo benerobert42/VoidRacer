@@ -34,11 +34,17 @@ struct StoreView: View {
     }
 
     private func storeChrome(for geo: GeometryProxy) -> some View {
-        StoreBackButton(action: appState.returnToMenu)
-            .padding(.leading, 18)
-            .padding(.top, StoreSafeArea.topInset(for: geo) + 12)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .zIndex(10)
+        HStack {
+            StoreBackButton(action: appState.returnToMenu)
+
+            Spacer()
+
+            StoreMoneyChip(amount: appState.coins)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, StoreSafeArea.topInset(for: geo) + 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .zIndex(10)
     }
 
     private var storeBackground: some View {
@@ -161,7 +167,7 @@ private struct ShipStorePage: View {
             .allowsHitTesting(false)
 
             VStack(spacing: 16) {
-                Spacer(minLength: StoreSafeArea.topInset(for: geometry) + 48)
+                Spacer(minLength: max(12, StoreSafeArea.topInset(for: geometry) - 20))
 
                 titleBlock
 
@@ -180,10 +186,12 @@ private struct ShipStorePage: View {
                                 .stroke(StorePalette.neonCyan.opacity(0.24), lineWidth: 1)
                         )
                 )
+                .offset(y: 38)
 
                 StorePageIndicator(currentShip: ship)
+                    .offset(y: 38)
 
-                Spacer(minLength: StoreSafeArea.bottomInset(for: geometry) + 14)
+                Spacer(minLength: StoreSafeArea.bottomInset(for: geometry) + 2)
             }
             .padding(.horizontal, 22)
         }
@@ -540,6 +548,54 @@ private struct StoreBackButton: View {
     }
 }
 
+private struct StoreMoneyChip: View {
+    let amount: Int
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(StorePalette.neonCyan.opacity(0.16))
+                    .frame(width: 25, height: 25)
+                    .overlay(
+                        Circle()
+                            .stroke(StorePalette.neonCyan.opacity(0.74), lineWidth: 1)
+                    )
+                    .shadow(color: StorePalette.neonCyan.opacity(0.62), radius: 8)
+
+                Image(systemName: "bitcoinsign")
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundColor(StorePalette.neonCyan)
+                    .shadow(color: StorePalette.neonCyan.opacity(0.9), radius: 5)
+            }
+
+            Text("\(amount)")
+                .font(.system(size: 13, weight: .black, design: .monospaced))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+        }
+        .padding(.leading, 9)
+        .padding(.trailing, 12)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(Color.black.opacity(0.52))
+                .background(
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                        .environment(\.colorScheme, .dark)
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(StorePalette.neonCyan.opacity(0.36), lineWidth: 1)
+                )
+                .shadow(color: StorePalette.neonCyan.opacity(0.22), radius: 16, y: 6)
+        )
+        .accessibilityLabel("Credits \(amount)")
+    }
+}
+
 struct ShipPreviewView: View {
     let shipName: String
     @EnvironmentObject private var appState: AppState
@@ -561,7 +617,7 @@ struct ShipPreviewView: View {
             showObstacles: false,
             showChaser: false,
             storeGridPalette: true,
-            shipVerticalOffset: 24,
+            shipVerticalOffset: 36,
             preferredFramesPerSecond: 30
         )
         .id(shipName)

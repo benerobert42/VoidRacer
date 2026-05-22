@@ -494,7 +494,7 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
     simd_float3 cameraUp = simd_make_float3(0, 1, 0);
     if (self.previewMode) {
         if (self.storeGridPalette) {
-            desiredCamPos = renderVehiclePosition + simd_make_float3(0.0f, 112.0f, 0.0f);
+            desiredCamPos = renderVehiclePosition + simd_make_float3(0.0f, 96.0f, 0.0f);
             cameraUp = simd_make_float3(0.0f, 0.0f, -1.0f);
         } else {
             desiredCamPos = renderVehiclePosition + simd_make_float3(0.0f, 96.0f, 58.0f);
@@ -807,7 +807,7 @@ static matrix_float4x4 matrix_scale(simd_float3 s) {
             yaw = atan2f(visualLateralSpeed, vehicle.velocity.z);
         }
         
-        float vehicleScaleValue = (self.previewMode && self.storeGridPalette) ? 0.98f : 0.8f;
+        float vehicleScaleValue = (self.previewMode && self.storeGridPalette) ? 1.176f : 0.8f;
         matrix_float4x4 vehScale = matrix_scale(simd_make_float3(vehicleScaleValue, vehicleScaleValue, vehicleScaleValue));
         matrix_float4x4 vehRotY = matrix_rotation_y(yaw);
         matrix_float4x4 vehRotZ = (self.previewMode && self.storeGridPalette)

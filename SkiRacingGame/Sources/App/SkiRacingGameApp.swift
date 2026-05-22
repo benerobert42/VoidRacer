@@ -24,6 +24,8 @@ struct ContentView: View {
                 LevelSelectView()
             case .store:
                 StoreView()
+            case .achievements:
+                AchievementsView()
             case .game:
                 GameView()
             case .gameOver:

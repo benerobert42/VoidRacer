@@ -24,7 +24,7 @@ struct MainMenuView: View {
                         actionStack
                     }
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 54)
+                    .padding(.bottom, 110)
                     .offset(y: buttonOffset)
                     .opacity(buttonOpacity)
                 }
@@ -91,6 +91,25 @@ struct MainMenuView: View {
                 symbolName: "bag.fill",
                 action: appState.openStore
             )
+
+            HStack(spacing: 12) {
+                CompactMenuActionButton(
+                    title: "ACHIEVEMENTS",
+                    subtitle: "10 locked",
+                    accent: Color(red: 0.64, green: 0.34, blue: 0.98),
+                    symbolName: "trophy.fill",
+                    action: appState.openAchievements
+                )
+
+                CompactMenuActionButton(
+                    title: "SHOP",
+                    subtitle: "Soon",
+                    accent: Color(red: 0.12, green: 0.88, blue: 1.0),
+                    symbolName: "cart.fill",
+                    action: {}
+                )
+            }
+            .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: 420)
     }
@@ -328,6 +347,232 @@ private struct RetroNeonIcon: View {
         .accessibilityHidden(true)
     }
 }
+
+private struct CompactMenuActionButton: View {
+    let title: String
+    let subtitle: String
+    let accent: Color
+    let symbolName: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: symbolName)
+                    .font(.system(size: 17, weight: .black))
+                    .foregroundColor(.white)
+                    .frame(width: 38, height: 38)
+                    .background(
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .fill(Color.black.opacity(0.48))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                    .stroke(accent.opacity(0.78), lineWidth: 1.1)
+                            )
+                            .shadow(color: accent.opacity(0.62), radius: 8)
+                    )
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                        .tracking(0.8)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.58)
+
+                    Text(subtitle)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.66))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color.black.opacity(0.36))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        accent.opacity(0.14),
+                                        Color.white.opacity(0.032),
+                                        Color.black.opacity(0.10)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(accent.opacity(0.48), lineWidth: 1.1)
+                    )
+            )
+            .shadow(color: accent.opacity(0.18), radius: 16, y: 8)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct AchievementsView: View {
+    @EnvironmentObject var appState: AppState
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                TerrainPreviewView(level: appState.selectedLevel, scrollSpeed: 34, preferredFramesPerSecond: 30)
+                    .ignoresSafeArea()
+                    .clipped()
+
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.42),
+                        Color.black.opacity(0.64),
+                        Color.black.opacity(0.86)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+
+                VStack(spacing: 18) {
+                    achievementsHeader(topInset: proxy.safeAreaInsets.top)
+
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 12) {
+                            ForEach(dummyAchievements) { achievement in
+                                AchievementRow(achievement: achievement)
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, max(proxy.safeAreaInsets.bottom + 26, 44))
+                    }
+                }
+            }
+            .ignoresSafeArea()
+        }
+    }
+
+    private func achievementsHeader(topInset: CGFloat) -> some View {
+        HStack(spacing: 14) {
+            Button(action: appState.returnToMenu) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 18, weight: .black))
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .background(GlassRoundedBackground(cornerRadius: 16, tint: Color.white.opacity(0.04)))
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("ACHIEVEMENTS")
+                    .font(.system(size: 25, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+                    .tracking(1.3)
+
+                Text("Locked challenges to unlock later")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.64))
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, topInset + 16)
+    }
+}
+
+private struct AchievementRow: View {
+    let achievement: DummyAchievement
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.black.opacity(0.52))
+                    .frame(width: 58, height: 58)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(achievement.accent.opacity(0.64), lineWidth: 1.1)
+                    )
+                    .shadow(color: achievement.accent.opacity(0.34), radius: 10)
+
+                Image(systemName: achievement.symbolName)
+                    .font(.system(size: 22, weight: .black))
+                    .foregroundColor(.white.opacity(0.90))
+                    .shadow(color: achievement.accent.opacity(0.80), radius: 7)
+
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundColor(.black.opacity(0.78))
+                    .padding(5)
+                    .background(Circle().fill(achievement.accent))
+                    .offset(x: 22, y: 22)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(achievement.title)
+                    .font(.system(size: 15, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+
+                Text(achievement.requirement)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.62))
+                    .lineLimit(2)
+
+                ProgressView(value: 0.0)
+                    .tint(achievement.accent)
+                    .scaleEffect(x: 1, y: 0.65, anchor: .center)
+            }
+
+            Spacer(minLength: 8)
+
+            Text("LOCKED")
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .foregroundColor(achievement.accent)
+                .tracking(1.2)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(
+                    Capsule()
+                        .fill(achievement.accent.opacity(0.12))
+                        .overlay(Capsule().stroke(achievement.accent.opacity(0.42), lineWidth: 1))
+                )
+        }
+        .padding(14)
+        .background(GlassRoundedBackground(cornerRadius: 24, tint: achievement.accent.opacity(0.07)))
+    }
+}
+
+private struct DummyAchievement: Identifiable {
+    let id = UUID()
+    let title: String
+    let requirement: String
+    let symbolName: String
+    let accent: Color
+}
+
+private let dummyAchievements: [DummyAchievement] = [
+    DummyAchievement(title: "Thread The Needle", requirement: "Unlock by scoring 20 near misses in one run.", symbolName: "scope", accent: Color(red: 0.12, green: 0.88, blue: 1.0)),
+    DummyAchievement(title: "Solar Surfer", requirement: "Unlock by surviving 180 seconds.", symbolName: "sun.max.fill", accent: Color(red: 1.0, green: 0.72, blue: 0.20)),
+    DummyAchievement(title: "Void Banker", requirement: "Unlock by collecting 2,500 credits.", symbolName: "bitcoinsign.circle.fill", accent: Color(red: 1.0, green: 0.84, blue: 0.24)),
+    DummyAchievement(title: "No-Scratch Run", requirement: "Unlock by finishing 90 seconds without taking damage.", symbolName: "shield.fill", accent: Color(red: 0.22, green: 0.86, blue: 0.54)),
+    DummyAchievement(title: "Jump Chain", requirement: "Unlock by chaining 5 jump pads.", symbolName: "arrow.up.forward.circle.fill", accent: Color(red: 0.60, green: 0.36, blue: 1.0)),
+    DummyAchievement(title: "Overdrive Pilot", requirement: "Unlock by using 3 boost pads in one run.", symbolName: "bolt.fill", accent: Color(red: 1.0, green: 0.48, blue: 0.08)),
+    DummyAchievement(title: "Canyon Reader", requirement: "Unlock by clearing 12 route forks.", symbolName: "map.fill", accent: Color(red: 0.18, green: 0.78, blue: 1.0)),
+    DummyAchievement(title: "Chrome Collector", requirement: "Unlock by owning 3 ships.", symbolName: "paperplane.fill", accent: Color(red: 0.86, green: 0.88, blue: 0.94)),
+    DummyAchievement(title: "Risk Line", requirement: "Unlock by collecting 30 edge orbs.", symbolName: "circle.hexagongrid.fill", accent: Color(red: 1.0, green: 0.18, blue: 0.72)),
+    DummyAchievement(title: "Night Machine", requirement: "Unlock by playing every level in one session.", symbolName: "moon.stars.fill", accent: Color(red: 0.44, green: 0.66, blue: 1.0))
+]
 
 struct CurrencyCapsule: View {
     let amount: Int

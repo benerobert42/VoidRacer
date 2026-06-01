@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct SkiRacingGameApp: App {
+struct VoidRacerApp: App {
     @StateObject private var appState = AppState(engine: GameEngineWrapper())
     
     var body: some Scene {

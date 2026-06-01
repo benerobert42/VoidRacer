@@ -6,11 +6,11 @@ This document explains how ship assets are currently organized and how the game 
 
 Ship assets currently live in:
 
-- `SkiRacingGame/Assets/Executioner`
-- `SkiRacingGame/Assets/Challenger`
-- `SkiRacingGame/Assets/Dispatcher`
-- `SkiRacingGame/Assets/Imperial`
-- `SkiRacingGame/Assets/Insurgent`
+- `VoidRacer/Assets/Executioner`
+- `VoidRacer/Assets/Challenger`
+- `VoidRacer/Assets/Dispatcher`
+- `VoidRacer/Assets/Imperial`
+- `VoidRacer/Assets/Insurgent`
 
 Typical contents:
 

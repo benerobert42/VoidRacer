@@ -167,9 +167,9 @@ To reach award-level cohesion, visuals must reinforce gameplay states:
 
 Primary files:
 
-- `SkiRacingGame/Sources/GraphicsEngine/Shaders.metal`
-- `SkiRacingGame/Sources/GraphicsEngine/GameRenderer.mm`
-- `SkiRacingGame/Sources/GameLogic/PhysicsWorld.cpp`
+- `VoidRacer/Sources/GraphicsEngine/Shaders.metal`
+- `VoidRacer/Sources/GraphicsEngine/GameRenderer.mm`
+- `VoidRacer/Sources/GameLogic/PhysicsWorld.cpp`
 
 Proposed concrete tasks:
 

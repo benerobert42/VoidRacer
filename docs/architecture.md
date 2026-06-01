@@ -13,7 +13,7 @@ This document describes the current structure of the game as implemented in the 
 
 ## App Flow
 
-The top-level app state lives in `SkiRacingGame/Sources/App/AppState.swift`.
+The top-level app state lives in `VoidRacer/Sources/App/AppState.swift`.
 
 Current screens:
 
@@ -123,9 +123,9 @@ Current responsibilities:
 
 Gameplay rendering is handled by:
 
-- `SkiRacingGame/Sources/GraphicsEngine/GameRenderer.mm`
-- `SkiRacingGame/Sources/GraphicsEngine/AssetManager.mm`
-- `SkiRacingGame/Sources/GraphicsEngine/Shaders.metal`
+- `VoidRacer/Sources/GraphicsEngine/GameRenderer.mm`
+- `VoidRacer/Sources/GraphicsEngine/AssetManager.mm`
+- `VoidRacer/Sources/GraphicsEngine/Shaders.metal`
 
 Current renderer behavior:
 
@@ -173,7 +173,7 @@ Current preview behavior:
 
 ## Game Simulation
 
-The core simulation is in `SkiRacingGame/Sources/GameLogic/`.
+The core simulation is in `VoidRacer/Sources/GameLogic/`.
 
 Main types:
 
@@ -247,7 +247,7 @@ Handles the per-frame update loop:
 
 ## Assets
 
-Assets currently live under `SkiRacingGame/Assets/`.
+Assets currently live under `VoidRacer/Assets/`.
 
 Each ship folder can contain:
 
